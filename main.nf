@@ -6,9 +6,9 @@ nextflow.enable.dsl=2
 process RegenieStep1 {
 
   input:
-  path genotype_array
-  path phenotype_file
-  path covariates_file
+  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  path phenotype_file   //value
+  path covariates_file  // value
 
   output:
   tuple path(phenotype_file), path("regenie_step1_out*"), emit: regenie_step1_out
@@ -103,8 +103,10 @@ workflow RegenieSubworkflow {
   def covariates_file = file(params.covariates_file)
   def sample_file = file(params.sample_file)
 
+  genotypes_array_ch = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
+  genotypes_final_ch = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}
 
-  RegenieStep1(genotype_array, phenotype_file, covariates_file)
+  RegenieStep1(genotypes_final_ch, phenotype_file, covariates_file)
 
   step1_out = RegenieStep1.out.regenie_step1_out.first()
 
