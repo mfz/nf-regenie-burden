@@ -130,5 +130,5 @@ workflow {
   Channel.fromPath(params.phenotypes_files).set { pheno_files }
   Channel.fromPath(params.genotypes_bgen).set { bgen_files }
 
-  pheno_files | RegenieSubworkflow(it, bgen_files: bgen_files)
+  RegenieSubworkflow(pheno_files, bgen_files)
 }
