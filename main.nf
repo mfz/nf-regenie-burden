@@ -5,9 +5,6 @@ nextflow.enable.dsl=2
 
 process RegenieStep1 {
 
-  cpus '8'
-  memory '16G'
-
   input:
   path genotype_array
   path phenotype_file
@@ -33,8 +30,7 @@ process RegenieStep1 {
 
 process RegenieStep2 {
 
-  cpus 2
-  memory '8G'
+  
 
   input:
   tuple path(phenotype_file), path(step1_out)
