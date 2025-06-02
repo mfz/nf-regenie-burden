@@ -14,7 +14,7 @@ process RegenieStep1 {
   path covariates_file
 
   output:
-  tuple path(phenotype_file), path("regenie_step1_out*")
+  tuple path(phenotype_file), path("regenie_step1_out*"), emit: regenie_step1_out
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -42,7 +42,7 @@ process RegenieStep2 {
   path sample_file
 
   output:
-  tuple path(phenotype_file), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz")
+  tuple path(phenotype_file), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
@@ -107,17 +107,16 @@ workflow RegenieSubworkflow {
   def covariates_file = file(params.covariates_file)
   def sample_file = file(params.sample_file)
 
-  phenotype_file.map { pheno_file ->
-    tuple(pheno_file, genotype_array, covariates_file)
-  } | RegenieStep1 | set { step1_out }
 
-  step1_out.flatMap { pheno_file, step1_result ->
-    bgen_files.map { bgen_file ->
-      tuple(pheno_file, step1_result, bgen_file, sample_file)
-    }
-  } | RegenieStep2 | collect() | set { step2_out_files }
+  RegenieStep1(genotype_array, phenotype_file, covariates_file)
 
-  phenotype_file.combine(step2_out_files) | MergePerPhenotype
+  step1_out = RegenieStep1.out.regenie_step1_out.first()
+
+  RegenieStep2(step1_out, bgen_files, sample_file)
+
+  step2_out = RegenieStep2.out.regenie_step2_out.collect()
+
+  MergePerPhenotype(phenotype_file, step2_out)
 
   emit:
   MergePerPhenotype.out
@@ -130,5 +129,5 @@ workflow {
   Channel.fromPath(params.phenotypes_files).set { pheno_files }
   Channel.fromPath(params.genotypes_bgen).set { bgen_files }
 
-  RegenieSubworkflow(pheno_files, bgen_files)
+  RegenieSubworkflow(pheno_files.first(), bgen_files)
 }
