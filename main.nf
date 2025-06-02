@@ -23,6 +23,7 @@ process RegenieStep1 {
     ${bt_flag} \
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step1} \
+    --ref-first \
     --lowmem \
     --out regenie_step1_out
   """
@@ -114,6 +115,8 @@ workflow RegenieSubworkflow {
   RegenieStep2(step1_out_files, phenotype_file, covariates_file, bgen_file_ch, sample_file)
 
   // path(step2_out_files)
+  // RegenieStep2 is called with a queue channel
+  // need to flatten and collect
   step2_out_files = RegenieStep2.out.regenie_step2_out.flatten().collect()
 
   MergePerPhenotype(phenotype_file, step2_out_files)
@@ -133,7 +136,7 @@ workflow {
 
   pheno_file_ch = Channel.fromPath(params.phenotypes_files)
   covariates_file = file(params.covariates_file)
-  bgen_files = Channel.fromPath(params.genotypes_bgen).collect()  // make this a list
+  bgen_files = Channel.fromPath(params.genotypes_bgen).filter { !it.toString().contains("chrY") }.collect()  // make this a list
   sample_file = file(params.sample_file)
 
   RegenieSubworkflow(genotypes_array_tuple, pheno_file_ch, covariates_file, bgen_files, sample_file)
