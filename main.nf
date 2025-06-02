@@ -88,7 +88,7 @@ process MergePerPhenotype {
   head -n 1 ${phenofile} | cut -f3- | tr '\t' '\n' > pheno_names.txt
   
   while read pheno; do
-    zcat \$(ls ${all_result_files} | grep "_\${pheno}\.gz") | sort -k1,1 -k2,2n | bgzip -c > \${pheno}.txt.gz
+    zcat \$(ls ${all_result_files} | grep "_\${pheno}.gz") | sort -k1,1 -k2,2n | bgzip -c > \${pheno}.txt.gz
   done < pheno_names.txt
   """
 }
