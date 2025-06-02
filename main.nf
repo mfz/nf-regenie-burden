@@ -136,7 +136,7 @@ workflow {
 
   pheno_file_ch = Channel.fromPath(params.phenotypes_files)
   covariates_file = file(params.covariates_file)
-  bgen_files = Channel.fromPath(params.genotypes_bgen).filter { !it.toString().contains("chrY") }.collect().first()  // make this a list
+  bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }  // make this a list
   sample_file = file(params.sample_file)
 
   RegenieSubworkflow(genotypes_array_tuple, pheno_file_ch, covariates_file, bgen_files, sample_file)
