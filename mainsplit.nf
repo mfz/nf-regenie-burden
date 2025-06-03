@@ -3,14 +3,18 @@ nextflow.enable.dsl=2
 
 process RegenieStep1_Split {
 
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
+
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
   path phenotype_file   //value
   path covariates_file  // value
   val num_chunks
 
+  
   output:
   path("fit_bin_parallel*"), emit: regenie_step1_split_out
+  path("fit_bin_parallel.master"), emit: regenie_step1_master
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -31,6 +35,8 @@ process RegenieStep1_Split {
 
 
 process RegenieStep1_L0 {
+
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
@@ -62,11 +68,14 @@ process RegenieStep1_L0 {
 
 process RegenieStep1_L1 {
 
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
+
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
   path phenotype_file   //value
   path covariates_file  // value
   path step1_l0
+  path master
   
 
   output:
@@ -85,7 +94,7 @@ process RegenieStep1_L1 {
     --ref-first \
     --lowmem \
     --out fit_bin_l1 \
-    --run-l1 fit_bin_parallel.master \
+    --run-l1 ${master} \
     --use-relative-path
   """
 }
@@ -102,12 +111,13 @@ workflow RegenieStep1 {
     main:
     RegenieStep1_Split(genotypes_array_tuple, phenotype_file, covariates_file, num_chunks)
     step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out.collect()
+    step1_master = RegenieStep1_Split.out.regenie_step1_master
 
     jobs = Channel.from(1..num_chunks)
     RegenieStep1_L0(genotypes_array_tuple, phenotype_file, covariates_file, step1_split_out, jobs)
 
     step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out.collect()
-    RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out)
+    RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out, step1_master)
 
     regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out
 
