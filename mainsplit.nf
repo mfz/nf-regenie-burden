@@ -122,7 +122,7 @@ workflow {
   genotypes_array_tuple = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
   // tuple val(plink_root), path(bed), path(bin), path(fam)
 
-  pheno_file_ch = Channel.fromPath(params.phenotypes_files)
+  pheno_file_ch = Channel.fromPath(params.phenotypes_files).first()
   covariates_file = file(params.covariates_file)
 
   RegenieStep1(genotypes_array_tuple, pheno_file_ch, covariates_file, 10)
