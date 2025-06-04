@@ -120,16 +120,15 @@ workflow RegenieStep1 {
     step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
 
     // group by phenotype
-    println "Type: ${phenotype_file.getClass()}"
-    def phenoMap = phenotype_file.get().withReader { reader ->
-        def headerLine = reader.readLine()
-        def phenotypes = headerLine.split('\t')[2..-1]
-        return phenotypes.withIndex().collectEntries { pheno, idx ->
-            ["Y${idx+1}", pheno]
-        }
-    }
     
-    println("phenoMap ${phenoMap}")
+    // build map from Y_n to phenotype name
+    def phenoMap = [:]
+    def phenotypes_array = phenotype_file.get().newReader().readLine().split("\t")[2..-1]
+    for (int i = 1; i <= phenotypes_array.length; i++){
+            phenoMap["Y" + i] = phenotypes_array[i-1]
+    }
+
+    println "phenoMap ${phenoMap}"
 
     step1_l0_out_by_pheno = step1_l0_out.collect().flatten()
       .map {file ->
