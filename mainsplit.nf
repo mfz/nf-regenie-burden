@@ -120,11 +120,16 @@ workflow RegenieStep1 {
     step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
 
     // group by phenotype
+    def phenoFile = file('path/to/phenotype_file.txt')
+    def header = phenoFile.text.readLines().first()
+    def phenotypes = header.split('\t')[2..-1]
+    def phenoMap = phenotypes.withIndex(1).collectEntries { name, idx -> ["Y${idx}".toString(), name] }
+
     step1_l0_out_by_pheno = step1_l0_out.collect().flatten()
       .map {file ->
             def name = file.getName()
             def group_key = name.split('_')[-1]
-            tuple(group_key, file)
+            tuple(phenoMap[group_key], file)
       }
       .groupTuple()
 
