@@ -181,6 +181,9 @@ process RegenieStep2 {
   path covariates_file
   path bgen_file
   path sample_file
+  path regenie_gene_anno
+  path regenie_gene_setlist
+  path regenie_gene_masks
 
   output:
   path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
@@ -199,10 +202,10 @@ process RegenieStep2 {
     ${bt_flag} ${firth_flag} ${approx_flag} --pThresh 0.01 \
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step2} \
-    --pred regenie_step1_out_pred.list \
-    --anno-file ${params.regenie_gene_anno} \
-    --set-list ${params.regenie_gene_setlist} \
-    --mask-def ${params.regenie_gene_masks} \
+    --pred fit_bin_l1_pred.list \
+    --anno-file ${regenie_gene_anno} \
+    --set-list ${regenie_gene_setlist} \
+    --mask-def ${regenie_gene_masks} \
     --aaf-bins ${params.regenie_gene_aaf} \
     --threads 2 \
     --gz \
@@ -251,8 +254,13 @@ workflow Regenie {
   RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file, 10)
   regenie_step1_out = RegenieStep1.out.regenie_step1_out.collect()
 
+  regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
+  regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
+  regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
+
   bgen_file_ch = Channel.from(bgen_files)
-  RegenieStep2(regenie_step1_out, phenotype_file, covariates_file, bgen_file_ch, sample_file)
+  RegenieStep2(regenie_step1_out, phenotype_file, covariates_file, bgen_file_ch, sample_file, 
+               regenie_anno_file, regenie_setlist_file, regenie_masks_file)
 
   step2_out_files = RegenieStep2.out.regenie_step2_out.flatten().collect()
   MergePerPhenotype(phenotype_file, step2_out_files)
