@@ -161,10 +161,7 @@ workflow RegenieStep1 {
 
     RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out_by_pheno, step1_master)
 
-    
-
-    regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out
-
+  
      // merge pred.list files from chunks and add it to output channel
     mergedPredList = RegenieStep1_L1.out.regenie_step1_l1_predlist.collectFile()
     regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_loco.concat(mergedPredList)
