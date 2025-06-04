@@ -94,7 +94,7 @@ process RegenieStep1_L1 {
     --ref-first \
     --lowmem \
     --out fit_bin_l1 \
-    --l1-phenotype ${phenotype} \
+    --l1-phenoList ${phenotype} \
     --run-l1 ${master} \
     --use-relative-path
   """
