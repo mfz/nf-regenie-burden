@@ -121,9 +121,14 @@ workflow RegenieStep1 {
 
     // group by phenotype
     println "Type: ${phenotype_file.getClass()}"
-    def header = phenotype_file.first().text.split('\n')[0]
-    def phenotypes = header.split('\t')[2..-1]
-    def phenoMap = phenotypes.withIndex(1).collectEntries { name, idx -> ["Y${idx}".toString(), name] }
+    def phenoMap = phenotype_file.get().withReader { reader ->
+        def headerLine = reader.readLine()
+        def phenotypes = headerLine.split('\t')[2..-1]
+        return phenotypes.withIndex().collectEntries { pheno, idx ->
+            ["Y${idx+1}", pheno]
+        }
+    }
+    
     println("phenoMap ${phenoMap}")
 
     step1_l0_out_by_pheno = step1_l0_out.collect().flatten()
