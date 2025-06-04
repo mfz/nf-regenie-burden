@@ -81,7 +81,8 @@ process RegenieStep1_L1 {
   
 
   output:
-  path("fit_bin_l1*"), emit: regenie_step1_l1_out
+  path("fit_bin_l1*.loco"), emit: regenie_step1_l1_loco
+  path("fit_bin_l1_pred.list"), emit: regenie_step1_l1_predlist
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -119,7 +120,7 @@ workflow RegenieStep1 {
     jobs = Channel.from(1..num_chunks)
     RegenieStep1_L0(genotypes_array_tuple, phenotype_file, covariates_file, step1_split_out, jobs)
 
-    step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
+    step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out.flatten()
 
     // group by phenotype
     
@@ -163,6 +164,10 @@ workflow RegenieStep1 {
     
 
     regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out
+
+     // merge pred.list files from chunks and add it to output channel
+    mergedPredList = RegenieStep1_L1.out.regenie_step1_l1_predlist.collectFile()
+    regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_loco.concat(mergedPredList)
 
     emit:
     regenie_step1_out
@@ -247,7 +252,7 @@ workflow Regenie {
 
   main:
   RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file, 10)
-  regenie_step1_out = RegenieStep1.out.regenie_step1_out
+  regenie_step1_out = RegenieStep1.out.regenie_step1_out.collect()
 
   bgen_file_ch = Channel.from(bgen_files)
   RegenieStep2(regenie_step1_out, phenotype_file, covariates_file, bgen_file_ch, sample_file)
