@@ -66,6 +66,8 @@ process RegenieStep1_L0 {
 }
 
 
+
+
 process RegenieStep1_L1 {
 
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
@@ -121,6 +123,23 @@ workflow RegenieStep1 {
 
     // group by phenotype
     
+    phenoMap_ch = phenotype_file.map { file ->
+      def m = [:]
+      file.withReader { r ->
+          def header = r.readLine().split('\t')
+          (2..<header.size()).each { i -> m["Y${i - 1}"] = header[i] }
+      }
+      return m
+    }
+
+    step1_l0_out_by_pheno = step1_l0_out.combine(phenoMap_ch)
+        .map { file, phenoMap ->
+            def group_key = file.getName().split('_')[-1]
+            tuple(phenoMap[group_key], file)
+        }
+        .groupTuple().view()
+
+/*
     // build map from Y_n to phenotype name
     def phenoMap = [:]
     def phenotypes_array = phenotype_file.get().newReader().readLine().split("\t")
@@ -137,7 +156,7 @@ workflow RegenieStep1 {
             tuple(phenoMap[group_key], file)
       }
       .groupTuple()
-
+*/
 
     RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out_by_pheno, step1_master)
 
