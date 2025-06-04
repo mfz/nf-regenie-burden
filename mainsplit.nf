@@ -123,12 +123,12 @@ workflow RegenieStep1 {
     
     // build map from Y_n to phenotype name
     def phenoMap = [:]
-    def phenotypes_array = phenotype_file.get().newReader().readLine().split("\t")[2..-1]
-    for (int i = 1; i <= phenotypes_array.length; i++){
-            phenoMap["Y" + i] = phenotypes_array[i-1]
+    def phenotypes_array = phenotype_file.get().newReader().readLine().split("\t")
+    for (int i = 2; i < phenotypes_array.length; i++){
+            phenoMap["Y" + i - 1] = phenotypes_array[i]
     }
 
-    println "phenoMap ${phenoMap}"
+    //println "phenoMap ${phenoMap}"
 
     step1_l0_out_by_pheno = step1_l0_out.collect().flatten()
       .map {file ->
