@@ -241,12 +241,12 @@ process MergePerPhenotype {
   # Loop over phenotype names
   while read pheno; do
     # Extract header from the first matching file
-    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 1)
+    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 2)
     zcat "\$first_file" | head -n 1 > "merged/\${pheno}.regenie"
 
     # Concatenate all matching files, skip their headers, and sort
     ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | while read f; do
-      zcat "\$f" | tail -n +2
+      zcat "\$f" | tail -n +3
     done | sort -k1,1 -k2,2n >> "merged/\${pheno}.regenie"
 
     # Compress
