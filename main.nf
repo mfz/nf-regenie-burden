@@ -62,7 +62,7 @@ process RegenieStep2 {
     ${bt_flag} ${firth_flag} ${approx_flag} --pThresh 0.01 \
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step2} \
-    --pred regenie_step1_out_pred.list \
+    --pred regenie_step1_${meta.phenotype}_pred.list \
     --anno-file ${regenie_gene_anno} \
     --set-list ${regenie_gene_setlist} \
     --mask-def ${regenie_gene_masks} \
