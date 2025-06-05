@@ -289,12 +289,12 @@ workflow {
   genotypes_array_tuple = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
   // tuple val(plink_root), path(bed), path(bin), path(fam)
 
-  pheno_file = Channel.fromPath(params.phenotypes_files).first()
+  pheno_file_ch = Channel.fromPath(params.phenotypes_files)
   covariates_file = file(params.covariates_file)
   bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }
   sample_file = file(params.sample_file)
 
-  
+  pheno_file_ch.map {pheno_file -> 
   Regenie(genotypes_array_tuple, pheno_file, covariates_file, bgen_files, sample_file)
-  
+  }
 }

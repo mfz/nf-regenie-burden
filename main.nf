@@ -3,15 +3,16 @@
 nextflow.enable.dsl=2
 
 
+
 process RegenieStep1 {
 
   input:
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  path phenotype_file   //value
-  path covariates_file  // value
+  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam) 
+  tuple val(meta), path(phenotype_file)   
+  path covariates_file  
 
   output:
-  path("regenie_step1_out*"), emit: regenie_step1_out
+  tuple val(meta), path(phenotype_file), path("regenie_step1_*"), emit: regenie_step1_out
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -25,21 +26,20 @@ process RegenieStep1 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
-    --out regenie_step1_out
+    --out regenie_step1_${meta.phenotype}
   """
 }
 
 process RegenieStep2 {
 
   input:
-  path step1_out_files
-  path phenotype_file
+  tuple val(meta), path(phenotype_file), path(step1_out_files)
   path covariates_file
   path bgen_file
   path sample_file
 
   output:
-  path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+  tuple val(meta + [bgen:bgen_file.baseName]), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
@@ -63,66 +63,40 @@ process RegenieStep2 {
     --threads 2 \
     --gz \
     --check-burden-files \
-    --split \
     --out regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}
   """
 }
 
-process MergePerPhenotype {
 
-  cpus 2
-  memory '4G'
+process MergePhenotype {
 
-  tag "merge_${phenofile.baseName}"
 
-  publishDir "${params.outdir}/results", mode: 'move'
+  publishDir "${params.outdir}", mode: 'move'
 
   input:
-  path phenofile
-  path all_result_files
+  tuple val(phenotype), path(step2_out_files)
+  
 
   output:
-  path("*.txt.gz")
+  path("merged/*.regenie.gz")
 
   
   script:
   """
-  head -n 1 ${phenofile} | cut -f3- | tr '\t' '\n' > pheno_names.txt
-  
-  while read pheno; do
-    zcat \$(ls ${all_result_files} | grep "_\${pheno}.gz") | sort -k1,1 -k2,2n | bgzip -c > \${pheno}.txt.gz
-  done < pheno_names.txt
+  mkdir merged
+
+  # Extract header from the first matching file
+  first_file=\$(ls | grep ".regenie.gz" | head -n 1)
+  zcat "\$first_file" | head -n 2 > "merged/${phenotype}.regenie"
+
+  # Concatenate all matching files, skip their headers, and sort
+  ls | grep ".regenie.gz" | while read f; do
+      zcat "\$f" | tail -n +3
+    done | sort -k1,1 -k2,2n >> "merged/${phenotype}.regenie"
+
+  # Compress
+  bgzip -f "merged/${phenotype}.regenie"
   """
-}
-
-workflow RegenieSubworkflow {
-  take:
-  genotypes_array_tuple   // tuple val(plink_root), path(bed), path(bim), path(fam)
-  phenotype_file          // path(phenotype_file)
-  covariates_file         // path(covariates_file)
-  bgen_files              // path(bgen_files)
-  sample_file             // path(sample_file)
-
-  main:
-  
-
-  RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file)
-
-  // path(regenie_step1_out*)
-  step1_out_files = RegenieStep1.out.regenie_step1_out
-
-  bgen_file_ch = Channel.from(bgen_files)
-  RegenieStep2(step1_out_files, phenotype_file, covariates_file, bgen_file_ch, sample_file)
-
-  // path(step2_out_files)
-  // RegenieStep2 is called with a queue channel
-  // need to flatten and collect
-  step2_out_files = RegenieStep2.out.regenie_step2_out.flatten().collect()
-
-  MergePerPhenotype(phenotype_file, step2_out_files)
-
-  emit:
-  MergePerPhenotype.out
 }
 
 
@@ -130,14 +104,45 @@ workflow RegenieSubworkflow {
 
 workflow {
 
-  genotypes_array_ch = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
-  genotypes_array_tuple = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
+  genotypes_array_tuple = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
+                          .map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
   // tuple val(plink_root), path(bed), path(bin), path(fam)
 
-  pheno_file_ch = Channel.fromPath(params.phenotypes_files)
+  pheno_file_ch = Channel.fromPath(params.phenotypes_files) 
+                  .map {file ->
+                        def meta = [phenotype: file.baseName]
+                        [meta, file]
+                  }.view()
+  // channel of tuple val(meta), path(pheno_file)
+
   covariates_file = file(params.covariates_file)
-  bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }  // make this a list
+
+  RegenieStep1(genotypes_array_tuple, pheno_file_ch, covariates_file)
+  step1_out_ch = RegenieStep1.out.regenie_step1_out  // tuple val(meta), path(pheno_file), path(regenie_step1_*)
+
+  bgen_files_ch = Channel
+      .fromPath(params.genotypes_bgen, checkIfExists: true)
+      .filter { !it.toString().contains("chrY") }
+  
   sample_file = file(params.sample_file)
 
-  RegenieSubworkflow(genotypes_array_tuple, pheno_file_ch, covariates_file, bgen_files, sample_file)
+  combined_ch = step1_out_ch.combine(bgen_files_ch).view()
+
+  RegenieStep2(combined_ch.map {it[0]},
+               covariates_file,
+               combined_ch.map {it[1]},
+               sample_file)
+
+  step2_out_ch = RegenieStep2.out.regenie_step2_out  // tuple val(meta), path(regenie_step2_out*.gz)
+
+  // group by phenotyoe
+  grouped_ch = step2_out_ch
+      .flatMap { meta, files -> 
+                 files.collect { file -> tuple(meta.phenotype, file) }
+      }
+  .groupTuple().view()
+
+  MergePhenotype(grouped_ch)
+
+
 }
