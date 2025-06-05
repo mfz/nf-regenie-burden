@@ -39,7 +39,7 @@ process RegenieStep2 {
   path sample_file
 
   output:
-  tuple val(meta + [bgen:bgen_file.baseName]), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+  tuple val(meta), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
