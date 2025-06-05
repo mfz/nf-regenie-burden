@@ -33,12 +33,15 @@ process RegenieStep1 {
 process RegenieStep2 {
 
   input:
-  tuple val(meta)
+  val(meta)
   path phenotype_file
   path step1_out_files
   path covariates_file
   path bgen_file
   path sample_file
+  path regenie_gene_anno
+  path regenie_gene_setlist
+  path regenie_gene_masks
 
   output:
   tuple val(meta), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
@@ -58,10 +61,10 @@ process RegenieStep2 {
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step2} \
     --pred regenie_step1_out_pred.list \
-    --anno-file ${params.regenie_gene_anno} \
-    --set-list ${params.regenie_gene_setlist} \
-    --mask-def ${params.regenie_gene_masks} \
-    --aaf-bins ${params.regenie_gene_aaf} \
+    --anno-file ${regenie_gene_anno} \
+    --set-list ${regenie_gene_setlist} \
+    --mask-def ${regenie_gene_masks} \
+    --aaf-bins ${regenie_gene_aaf} \
     --threads 2 \
     --gz \
     --check-burden-files \
@@ -130,12 +133,19 @@ workflow {
 
   combined_ch = step1_out_ch.combine(bgen_files_ch).view()
 
+  regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
+  regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
+  regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
+
   RegenieStep2(combined_ch.map {it[0]},
                combined_ch.map {it[1]},
                combined_ch.map {it[2]},
                covariates_file,
                combined_ch.map {it[3]},
-               sample_file)
+               sample_file,
+               regenie_anno_file,
+               regenie_setlist_file,
+               regenie_masks_file)
 
   step2_out_ch = RegenieStep2.out.regenie_step2_out  // tuple val(meta), path(regenie_step2_out*.gz)
 
