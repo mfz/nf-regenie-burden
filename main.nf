@@ -26,6 +26,7 @@ process RegenieStep1 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
+    --use-relative-path \
     --out regenie_step1_${meta.phenotype}
 
   cp ${phenotype_file} phenotype_file.tsv
