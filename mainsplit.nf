@@ -161,9 +161,6 @@ workflow RegenieStep1 {
 
     RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out_by_pheno, step1_master)
 
-  
-     // merge pred.list files from chunks and add it to output channel
-    //mergedPredList = RegenieStep1_L1.out.regenie_step1_l1_predlist.collectFile()
     regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out.flatten().collect()
 
     emit:
@@ -221,7 +218,7 @@ process MergePerPhenotype {
 
   tag "merge_${phenofile.baseName}"
 
-  publishDir "${params.outdir}/results", mode: 'move'
+  publishDir "${params.outdir}", mode: 'move'
 
   input:
   path phenofile
@@ -241,8 +238,8 @@ process MergePerPhenotype {
   # Loop over phenotype names
   while read pheno; do
     # Extract header from the first matching file
-    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 2)
-    zcat "\$first_file" | head -n 1 > "merged/\${pheno}.regenie"
+    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 1)
+    zcat "\$first_file" | head -n 2 > "merged/\${pheno}.regenie"
 
     # Concatenate all matching files, skip their headers, and sort
     ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | while read f; do
