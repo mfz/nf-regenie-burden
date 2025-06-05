@@ -96,12 +96,10 @@ process RegenieStep1_L1 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
-    --out fit_bin_l1 \
+    --out fit_bin_l1_${phenotype} \
     --l1-phenoList ${phenotype} \
     --run-l1 ${master} \
     --use-relative-path
-
-  mv fit_bin_l1_pred.list fit_bin_l1_${phenotype}_pred.list
   """
 }
 
@@ -262,7 +260,8 @@ workflow Regenie {
   regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
   regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
 
-  bgen_file_ch = Channel.from(bgen_files)
+  bgen_file_ch = Channel.from(bgen_files).view()
+  regenie_step1_out.view()
   RegenieStep2(regenie_step1_out, phenotype_file, covariates_file, bgen_file_ch, sample_file, 
                regenie_anno_file, regenie_setlist_file, regenie_masks_file)
 
