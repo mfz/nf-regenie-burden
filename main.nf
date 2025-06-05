@@ -12,7 +12,7 @@ process RegenieStep1 {
   path covariates_file  
 
   output:
-  tuple val(meta), path(phenotype_file), path("regenie_step1_*"), emit: regenie_step1_out
+  tuple val(meta), path("phenotype_file.tsv"), path("regenie_step1_*"), emit: regenie_step1_out
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -27,6 +27,8 @@ process RegenieStep1 {
     --ref-first \
     --lowmem \
     --out regenie_step1_${meta.phenotype}
+
+  cp ${phenotype_file} phenotype_file.tsv
   """
 }
 
