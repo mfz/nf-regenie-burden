@@ -64,7 +64,7 @@ process RegenieStep2 {
     --anno-file ${regenie_gene_anno} \
     --set-list ${regenie_gene_setlist} \
     --mask-def ${regenie_gene_masks} \
-    --aaf-bins ${regenie_gene_aaf} \
+    --aaf-bins ${params.regenie_gene_aaf} \
     --threads 2 \
     --gz \
     --check-burden-files \
