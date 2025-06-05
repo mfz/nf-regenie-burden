@@ -81,8 +81,8 @@ process RegenieStep1_L1 {
   
 
   output:
-  path("fit_bin_l1*.loco"), emit: regenie_step1_l1_loco
-  path("fit_bin_l1_pred.list"), emit: regenie_step1_l1_predlist
+  path("fit_bin_l1*"), emit: regenie_step1_l1_out
+  //path("fit_bin_l1_${phenotype}_pred.list"), emit: regenie_step1_l1_predlist
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -100,6 +100,8 @@ process RegenieStep1_L1 {
     --l1-phenoList ${phenotype} \
     --run-l1 ${master} \
     --use-relative-path
+
+  mv fit_bin_l1_pred.list fit_bin_l1_${phenotype}_pred.list
   """
 }
 
@@ -163,8 +165,8 @@ workflow RegenieStep1 {
 
   
      // merge pred.list files from chunks and add it to output channel
-    mergedPredList = RegenieStep1_L1.out.regenie_step1_l1_predlist.collectFile()
-    regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_loco.concat(mergedPredList)
+    //mergedPredList = RegenieStep1_L1.out.regenie_step1_l1_predlist.collectFile()
+    regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out.flatten().collect()
 
     emit:
     regenie_step1_out
@@ -193,6 +195,8 @@ process RegenieStep2 {
   def firth_flag  = params.regenie_firth ? "--firth" : ""
   def approx_flag = params.regenie_firth_approx ? "--approx" : ""
   """
+  cat fit_bin_l1_*_pred.list > fit_bin_l1_pred.list
+
   regenie \
     --step 2 \
     --bgen ${bgen_file} \
