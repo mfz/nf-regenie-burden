@@ -33,7 +33,9 @@ process RegenieStep1 {
 process RegenieStep2 {
 
   input:
-  tuple val(meta), path(phenotype_file), path(step1_out_files)
+  tuple val(meta)
+  path phenotype_file
+  path step1_out_files
   path covariates_file
   path bgen_file
   path sample_file
@@ -129,8 +131,10 @@ workflow {
   combined_ch = step1_out_ch.combine(bgen_files_ch).view()
 
   RegenieStep2(combined_ch.map {it[0]},
-               covariates_file,
                combined_ch.map {it[1]},
+               combined_ch.map {it[2]},
+               covariates_file,
+               combined_ch.map {it[3]},
                sample_file)
 
   step2_out_ch = RegenieStep2.out.regenie_step2_out  // tuple val(meta), path(regenie_step2_out*.gz)
