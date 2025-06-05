@@ -47,7 +47,7 @@ process RegenieStep2 {
   path regenie_gene_masks
 
   output:
-  tuple val(meta), path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+  tuple val(meta), path("regenie_step2_out_*.regenie.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
@@ -71,7 +71,7 @@ process RegenieStep2 {
     --threads 2 \
     --gz \
     --check-burden-files \
-    --out regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}
+    --out regenie_step2_out_${bgen_file.baseName}
   """
 }
 
@@ -120,7 +120,7 @@ workflow {
                   .map {file ->
                         def meta = [phenotype: file.baseName]
                         [meta, file]
-                  }.view()
+                  }
   // channel of tuple val(meta), path(pheno_file)
 
   covariates_file = file(params.covariates_file)
@@ -134,7 +134,7 @@ workflow {
   
   sample_file = file(params.sample_file)
 
-  combined_ch = step1_out_ch.combine(bgen_files_ch).view()
+  combined_ch = step1_out_ch.combine(bgen_files_ch)
 
   regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
   regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
