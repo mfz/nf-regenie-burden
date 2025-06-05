@@ -212,7 +212,6 @@ process RegenieStep2 {
     --threads 2 \
     --gz \
     --check-burden-files \
-    --split \
     --out regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}
   """
 }
@@ -229,15 +228,29 @@ process MergePerPhenotype {
   path all_result_files
 
   output:
-  path("*.txt.gz")
+  path("merged/*.regenie.gz")
 
   
   script:
   """
+  mkdir merged
+
+  # Extract phenotype names from header
   head -n 1 ${phenofile} | cut -f3- | tr '\t' '\n' > pheno_names.txt
-  
+
+  # Loop over phenotype names
   while read pheno; do
-    zcat \$(ls ${all_result_files} | grep "_\${pheno}.gz") | sort -k1,1 -k2,2n | bgzip -c > \${pheno}.txt.gz
+    # Extract header from the first matching file
+    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 1)
+    zcat "\$first_file" | head -n 1 > "merged/\${pheno}.regenie"
+
+    # Concatenate all matching files, skip their headers, and sort
+    ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | while read f; do
+      zcat "\$f" | tail -n +2
+    done | sort -k1,1 -k2,2n >> "merged/\${pheno}.regenie"
+
+    # Compress
+    bgzip -f "merged/\${pheno}.regenie"
   done < pheno_names.txt
   """
 }
