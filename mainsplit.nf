@@ -187,7 +187,7 @@ process RegenieStep2 {
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
-  def firth_flag  = params.regenie_firth ? "--firth" : ""
+  def firth_flag  = params.regenie_firth ? "--firth --firth-se --pThresh 0.05" : ""
   def approx_flag = params.regenie_firth_approx ? "--approx" : ""
   """
   cat fit_bin_l1_*_pred.list > fit_bin_l1_pred.list
@@ -198,7 +198,7 @@ process RegenieStep2 {
     --ref-first \
     --sample ${sample_file} \
     --phenoFile ${phenotype_file} \
-    ${bt_flag} ${firth_flag} ${approx_flag} --pThresh 0.01 \
+    ${bt_flag} ${firth_flag} ${approx_flag}  \
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step2} \
     --pred fit_bin_l1_pred.list \
@@ -263,7 +263,7 @@ workflow Regenie {
   sample_file             // path(sample_file)
 
   main:
-  RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file, 10)
+  RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file, params.genotypes_array_chunks)
   regenie_step1_out = RegenieStep1.out.regenie_step1_out.collect()
 
   regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
@@ -282,17 +282,19 @@ workflow Regenie {
   MergePerPhenotype.out
 }
 
+
 workflow {
 
   genotypes_array_ch = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
   genotypes_array_tuple = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
   // tuple val(plink_root), path(bed), path(bin), path(fam)
 
-  pheno_file_ch = Channel.fromPath(params.phenotypes_files).first()
+  pheno_file = Channel.fromPath(params.phenotypes_files).first()
   covariates_file = file(params.covariates_file)
   bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }
   sample_file = file(params.sample_file)
 
-  Regenie(genotypes_array_tuple, pheno_file_ch, covariates_file, bgen_files, sample_file)
-
+  
+  Regenie(genotypes_array_tuple, pheno_file, covariates_file, bgen_files, sample_file)
+  
 }
