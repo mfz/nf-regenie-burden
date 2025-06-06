@@ -155,7 +155,7 @@ workflow {
   // group by phenotyoe
   grouped_ch = step2_out_ch
       .flatMap { meta, files -> 
-                 files.collect { file -> tuple(meta.phenotype, file) }
+                 [files].flatten().collect { file -> tuple(meta.phenotype, file) }
       }
   .groupTuple().view()
 
