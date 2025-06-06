@@ -51,7 +51,7 @@ process RegenieStep2 {
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
-  def firth_flag  = params.regenie_firth ? "--firth" : ""
+  def firth_flag  = params.regenie_firth ? "--firth --firth-se --pThresh 0.05" : ""
   def approx_flag = params.regenie_firth_approx ? "--approx" : ""
   """
   regenie \
@@ -60,7 +60,7 @@ process RegenieStep2 {
     --ref-first \
     --sample ${sample_file} \
     --phenoFile ${phenotype_file} \
-    ${bt_flag} ${firth_flag} ${approx_flag} --pThresh 0.01 \
+    ${bt_flag} ${firth_flag} ${approx_flag}  \
     --covarFile ${covariates_file} \
     --bsize ${params.regenie_bsize_step2} \
     --pred regenie_step1_${meta.phenotype}_pred.list \
@@ -152,7 +152,9 @@ workflow {
 
   step2_out_ch = RegenieStep2.out.regenie_step2_out  // tuple val(meta), path(regenie_step2_out*.gz)
 
-  // group by phenotyoe
+  // group by phenotype
+  // if files is a single file, collect iterates over path components
+  // need to do [files].flatten() to force into list
   grouped_ch = step2_out_ch
       .flatMap { meta, files -> 
                  [files].flatten().collect { file -> tuple(meta.phenotype, file) }
