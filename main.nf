@@ -6,6 +6,8 @@ nextflow.enable.dsl=2
 
 process RegenieStep1 {
 
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
+  
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam) 
   tuple val(meta), path(phenotype_file)   
@@ -13,6 +15,7 @@ process RegenieStep1 {
 
   output:
   tuple val(meta), path("phenotype_file.tsv"), path("regenie_step1_*"), emit: regenie_step1_out
+  path("*.log"), optional: true
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -26,6 +29,7 @@ process RegenieStep1 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
+    --threads ${task.cpus} \
     --use-relative-path \
     --out regenie_step1_${meta.phenotype}
 
@@ -34,6 +38,8 @@ process RegenieStep1 {
 }
 
 process RegenieStep2 {
+
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
   val(meta)
@@ -48,6 +54,7 @@ process RegenieStep2 {
 
   output:
   tuple val(meta), path("regenie_step2_out_*.regenie.gz"), emit: regenie_step2_out
+  path("*.log"), optional: true
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
@@ -68,7 +75,7 @@ process RegenieStep2 {
     --set-list ${regenie_gene_setlist} \
     --mask-def ${regenie_gene_masks} \
     --aaf-bins ${params.regenie_gene_aaf} \
-    --threads 2 \
+    --threads ${task.cpus} \
     --gz \
     --check-burden-files \
     --out regenie_step2_out_${bgen_file.baseName}
