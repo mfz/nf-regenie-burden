@@ -7,15 +7,14 @@ process RegenieStep1_Split {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  path phenotype_file   //value
+  tuple val(meta), path(phenotype_file)  
   path covariates_file  // value
   val num_chunks
 
   
   output:
-  path("fit_bin_parallel*"), emit: regenie_step1_split_out
-  path("fit_bin_parallel.master"), emit: regenie_step1_master
-
+  tuple val(meta), path("fit_bin_parallel*.snplist"), path("fit_bin_parallel.master"), emit: regenie_step1_split_out
+  
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
   """
@@ -30,6 +29,7 @@ process RegenieStep1_Split {
     --lowmem \
     --out fit_bin_l0 \
     --split-l0 fit_bin_parallel,${num_chunks}
+
   """
 }
 
@@ -40,13 +40,15 @@ process RegenieStep1_L0 {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  val meta
   path phenotype_file   //value
   path covariates_file  // value
-  path step1_split
+  path step1_snplists
+  path step1_master
   val job
 
   output:
-  path("fit_bin_parallel*"), emit: regenie_step1_l0_out
+  tuple val(meta), path("fit_bin_parallel*"), emit: regenie_step1_l0_out
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
@@ -62,6 +64,8 @@ process RegenieStep1_L0 {
     --lowmem \
     --out fit_bin_l0_${job} \
     --run-l0 fit_bin_parallel.master,${job}
+
+  cp fit_bin_parallel.master copy.master
   """
 }
 
@@ -74,19 +78,23 @@ process RegenieStep1_L1 {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  val meta
   path phenotype_file   //value
   path covariates_file  // value
-  tuple val(phenotype), path(chunks)
+  path locos
   path master
+  val phenonum
   
 
   output:
-  path("fit_bin_l1*"), emit: regenie_step1_l1_out
+  tuple val(meta), path("fit_bin_l1*"), emit: regenie_step1_l1_out
   //path("fit_bin_l1_${phenotype}_pred.list"), emit: regenie_step1_l1_predlist
 
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
   """
+  phenotype=\$(head -n 1 ${phenotype_file} | cut -f\$((${phenonum}+2)) )
+
   regenie \
     --step 1 \
     --bed ${genotype_array} \
@@ -285,16 +293,86 @@ workflow Regenie {
 
 workflow {
 
-  genotypes_array_ch = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
-  genotypes_array_tuple = genotypes_array_ch.map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
+  genotypes_array_tuple = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
+                          .map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
   // tuple val(plink_root), path(bed), path(bin), path(fam)
 
-  pheno_file_ch = Channel.fromPath(params.phenotypes_files)
+  pheno_file_ch = Channel.fromPath(params.phenotypes_files) 
+                  .map {file ->
+                        def meta = file.baseName
+                        [meta, file]
+                  }
+  // channel of tuple val(meta), path(pheno_file)
+
   covariates_file = file(params.covariates_file)
+
+  RegenieStep1_Split(genotypes_array_tuple, 
+                     pheno_file_ch, 
+                     covariates_file, 
+                     10)
+
+  step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out
+  // channel tuple val(meta), path(*.snplist), path(master)
+
+  step1_l0_in = pheno_file_ch  // val(meta), path(pheno_file)
+      .join(step1_split_out)   // val(meta), path(*.snplist), path(master)
+
+
+  // scatter into 10 jobs
+  jobs = Channel.from(1..10)
+
+  combined_step1_l0_in = step1_l0_in.combine(jobs)
+
+  step1_l0_out = RegenieStep1_L0(genotypes_array_tuple,
+                                 combined_step1_l0_in.map {it[0]}, // meta
+                                 combined_step1_l0_in.map {it[1]}, // phenofile
+                                 covariates_file,
+                                 combined_step1_l0_in.map {it[2]}, // snplists
+                                 combined_step1_l0_in.map {it[3]}, // master
+                                 combined_step1_l0_in.map {it[4]}) // job
+  // channel tuple val(meta), path(jobJ_Y*)
+
+  // gather
+  // need to group by val(meta)
+  step1_l0_out_grouped = step1_l0_out
+    .groupTuple()
+    .map {key, val ->
+          def flat = val.flatten()
+          tuple(key, flat)}
+  // channel val(meta), path(job*_Y*)
+
+  // Now we want to scatter by phenotype
+  // input to RegenieStep1_L1 is
+  // geno, pheno , covar, job*_Y*, master, phenonum
+  step1_l1_in = pheno_file_ch      // val(meta), path(pheno)
+      .join(step1_split_out)       // val(meta), path(*snplist), path(master)
+      .join(step1_l0_out_grouped)  // val(meta), path(jobJ_Yn)
+
+  phenonums = Channel.from(1..params.num_phenotypes_per_file)
+  combined_step1_l1_in = step1_l1_in.combine(phenonums)
+
+  step1_l1_out = RegenieStep1_L1(genotypes_array_tuple,
+                                 combined_step1_l1_in.map {it[0]}, // meta
+                                 combined_step1_l1_in.map {it[1]}, // phenotype_file
+                                 covariates_file,
+                                 combined_step1_l1_in.map {it[4]}, // *jobJ_Yn
+                                 combined_step1_l1_in.map {it[3]}, // master
+                                 combined_step1_l1_in.map {it[5]}) // phenonum
+  // channel tuple val(meta), path(fit_bin_l1_*)
+
+  // gather phenotypes again
+  step1_l1_out_grouped = step1_l1_out
+    .groupTuple()
+    .map {key, val ->
+          def flat = val.flatten()
+          tuple(key, flat)}
+  
+/*
   bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }
   sample_file = file(params.sample_file)
 
   pheno_file_ch.map {pheno_file -> 
   Regenie(genotypes_array_tuple, pheno_file, covariates_file, bgen_files, sample_file)
   }
+  */
 }
