@@ -112,69 +112,6 @@ process RegenieStep1_L1 {
 }
 
 
-workflow RegenieStep1 {
-
-    take:
-    genotypes_array_tuple   // tuple val(plink_root), path(bed), path(bim), path(fam)
-    phenotype_file          // path(phenotype_file)
-    covariates_file         // path(covariates_file)
-    num_chunks
-
-    main:
-    RegenieStep1_Split(genotypes_array_tuple, phenotype_file, covariates_file, num_chunks)
-    step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out.collect()
-    step1_master = RegenieStep1_Split.out.regenie_step1_master
-
-    jobs = Channel.from(1..num_chunks)
-    RegenieStep1_L0(genotypes_array_tuple, phenotype_file, covariates_file, step1_split_out, jobs)
-
-    step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out.flatten()
-
-    // group by phenotype
-    
-    phenoMap_ch = phenotype_file.map { file ->
-      def m = [:]
-      file.withReader { r ->
-          def header = r.readLine().split('\t')
-          (2..<header.size()).each { i -> m["Y${i - 1}"] = header[i] }
-      }
-      return m
-    }
-
-    step1_l0_out_by_pheno = step1_l0_out.combine(phenoMap_ch)
-        .map { file, phenoMap ->
-            def group_key = file.getName().split('_')[-1]
-            tuple(phenoMap[group_key], file)
-        }
-        .groupTuple().view()
-
-/*
-    // build map from Y_n to phenotype name
-    def phenoMap = [:]
-    def phenotypes_array = phenotype_file.get().newReader().readLine().split("\t")
-    for (int i = 2; i < phenotypes_array.length; i++){
-            phenoMap["Y" + i - 1] = phenotypes_array[i]
-    }
-
-    //println "phenoMap ${phenoMap}"
-
-    step1_l0_out_by_pheno = step1_l0_out.collect().flatten()
-      .map {file ->
-            def name = file.getName()
-            def group_key = name.split('_')[-1]
-            tuple(phenoMap[group_key], file)
-      }
-      .groupTuple()
-*/
-
-    RegenieStep1_L1(genotypes_array_tuple, phenotype_file, covariates_file, step1_l0_out_by_pheno, step1_master)
-
-    regenie_step1_out = RegenieStep1_L1.out.regenie_step1_l1_out.flatten().collect()
-
-    emit:
-    regenie_step1_out
-}
-
 process RegenieStep2 {
   
   tag "regenie_step2_${phenotype_file.baseName}"
@@ -182,6 +119,7 @@ process RegenieStep2 {
 
   input:
   path step1_out_files
+  val meta
   path phenotype_file
   path covariates_file
   path bgen_file
@@ -191,7 +129,7 @@ process RegenieStep2 {
   path regenie_gene_masks
 
   output:
-  path("regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+  tuple val(meta), path("regenie_step2_out_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
@@ -217,7 +155,7 @@ process RegenieStep2 {
     --threads 2 \
     --gz \
     --check-burden-files \
-    --out regenie_step2_out_${phenotype_file.baseName}_${bgen_file.baseName}
+    --out regenie_step2_out_${bgen_file.baseName}
   """
 }
 
@@ -262,34 +200,6 @@ process MergePerPhenotype {
 
 
 
-workflow Regenie {
-  take:
-  genotypes_array_tuple   // tuple val(plink_root), path(bed), path(bim), path(fam)
-  phenotype_file          // path(phenotype_file)
-  covariates_file         // path(covariates_file)
-  bgen_files              // path(bgen_files)
-  sample_file             // path(sample_file)
-
-  main:
-  RegenieStep1(genotypes_array_tuple, phenotype_file, covariates_file, params.genotypes_array_chunks)
-  regenie_step1_out = RegenieStep1.out.regenie_step1_out.collect()
-
-  regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
-  regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
-  regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
-
-  bgen_file_ch = Channel.from(bgen_files).view()
-  regenie_step1_out.view()
-  RegenieStep2(regenie_step1_out, phenotype_file, covariates_file, bgen_file_ch, sample_file, 
-               regenie_anno_file, regenie_setlist_file, regenie_masks_file)
-
-  step2_out_files = RegenieStep2.out.regenie_step2_out.flatten().collect()
-  MergePerPhenotype(phenotype_file, step2_out_files)
-
-  emit:
-  MergePerPhenotype.out
-}
-
 
 workflow {
 
@@ -323,13 +233,15 @@ workflow {
 
   combined_step1_l0_in = step1_l0_in.combine(jobs)
 
-  step1_l0_out = RegenieStep1_L0(genotypes_array_tuple,
+  RegenieStep1_L0(genotypes_array_tuple,
                                  combined_step1_l0_in.map {it[0]}, // meta
                                  combined_step1_l0_in.map {it[1]}, // phenofile
                                  covariates_file,
                                  combined_step1_l0_in.map {it[2]}, // snplists
                                  combined_step1_l0_in.map {it[3]}, // master
                                  combined_step1_l0_in.map {it[4]}) // job
+  
+  step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
   // channel tuple val(meta), path(jobJ_Y*)
 
   // gather
@@ -341,24 +253,27 @@ workflow {
           tuple(key, flat)}
   // channel val(meta), path(job*_Y*)
 
-  // Now we want to scatter by phenotype
+  // scatter by phenotype
   // input to RegenieStep1_L1 is
   // geno, pheno , covar, job*_Y*, master, phenonum
   step1_l1_in = pheno_file_ch      // val(meta), path(pheno)
       .join(step1_split_out)       // val(meta), path(*snplist), path(master)
-      .join(step1_l0_out_grouped)  // val(meta), path(jobJ_Yn)
+      .join(step1_l0_out_grouped)  // val(meta), path(job*_Y*)
 
   phenonums = Channel.from(1..params.num_phenotypes_per_file)
   combined_step1_l1_in = step1_l1_in.combine(phenonums)
 
-  step1_l1_out = RegenieStep1_L1(genotypes_array_tuple,
+  RegenieStep1_L1(genotypes_array_tuple,
                                  combined_step1_l1_in.map {it[0]}, // meta
                                  combined_step1_l1_in.map {it[1]}, // phenotype_file
                                  covariates_file,
-                                 combined_step1_l1_in.map {it[4]}, // *jobJ_Yn
+                                 combined_step1_l1_in.map {it[4]}, // job*_Y*
                                  combined_step1_l1_in.map {it[3]}, // master
                                  combined_step1_l1_in.map {it[5]}) // phenonum
-  // channel tuple val(meta), path(fit_bin_l1_*)
+  
+  step1_l1_out = RegenieStep1_l1.out.regenie_step1_l1_out
+  
+  // channel tuple val(meta), path(fit_bin_l1_pheno)
 
   // gather phenotypes again
   step1_l1_out_grouped = step1_l1_out
@@ -366,13 +281,45 @@ workflow {
     .map {key, val ->
           def flat = val.flatten()
           tuple(key, flat)}
-  
-/*
-  bgen_files = file(params.genotypes_bgen).findAll { !it.toString().contains("chrY") }
-  sample_file = file(params.sample_file)
+  // channel tuple val(meta), path(fit_bin_l1_*)
 
-  pheno_file_ch.map {pheno_file -> 
-  Regenie(genotypes_array_tuple, pheno_file, covariates_file, bgen_files, sample_file)
-  }
-  */
+  bgen_ch = Channel.fromPath(params.genotypes_bgen)
+     .filter {file -> !file.toString().contains("chrY")}
+
+  sample_file = file(params.sample_file)
+  regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
+  regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
+  regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
+
+  // scatter over bgens
+  combined_step2_in = pheno_file_ch           // val(meta), path(pheno_file)        
+      .join(step1_l1_out_grouped)             // val(meta), path(fit_bin_l1_*)
+      .combine(bgen_ch)                       // path(bgen_file)
+
+
+  Regenie_Step2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
+                combined_step2_in.map {it[0]}, // val(meta)
+                combined_step2_in.map {it[1]}, // path(pheno_file)
+                covariates_file,
+                combined_step2_in.map {it[3]}, // path(bgen_file)
+                sample_file,
+                regenie_anno_file,
+                regenie_setlist_file,
+                regenie_masks_file)
+
+  step2_out = Regenie_Step2.out.regenie_step2_out
+
+  // gather over bgens
+  step2_out_grouped = step2_out
+    .groupTuple()
+    .map {key, val ->
+          def flat = val.flatten()
+          tuple(key, flat)}
+  
+  merge_in = pheno_file_ch     // val(meta), path(pheno_file)
+    .join(step2_out_grouped)   // val(meta), path(step2out)
+
+  MergePerPhenotype( merge_in.map {it[1]},
+                     merge_in.map {it[2]})
+
 }
