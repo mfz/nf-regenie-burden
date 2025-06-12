@@ -271,7 +271,7 @@ workflow {
                                  combined_step1_l1_in.map {it[3]}, // master
                                  combined_step1_l1_in.map {it[5]}) // phenonum
   
-  step1_l1_out = RegenieStep1_l1.out.regenie_step1_l1_out
+  step1_l1_out = RegenieStep1_L1.out.regenie_step1_l1_out
   
   // channel tuple val(meta), path(fit_bin_l1_pheno)
 
@@ -297,7 +297,7 @@ workflow {
       .combine(bgen_ch)                       // path(bgen_file)
 
 
-  Regenie_Step2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
+  RegenieStep2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
                 combined_step2_in.map {it[0]}, // val(meta)
                 combined_step2_in.map {it[1]}, // path(pheno_file)
                 covariates_file,
@@ -307,7 +307,7 @@ workflow {
                 regenie_setlist_file,
                 regenie_masks_file)
 
-  step2_out = Regenie_Step2.out.regenie_step2_out
+  step2_out = RegenieStep2.out.regenie_step2_out
 
   // gather over bgens
   step2_out_grouped = step2_out
