@@ -104,8 +104,8 @@ process RegenieStep1_L1 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
-    --out fit_bin_l1_${phenotype} \
-    --l1-phenoList ${phenotype} \
+    --out fit_bin_l1_\${phenotype} \
+    --l1-phenoList \${phenotype} \
     --run-l1 ${master} \
     --use-relative-path
   """
