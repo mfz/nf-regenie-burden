@@ -162,6 +162,49 @@ process RegenieStep2_Burden {
 }
 
 
+process RegenieStep2 {
+  
+  tag "regenie_step2_${phenotype_file.baseName}"
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
+
+  input:
+  path step1_out_files
+  val meta
+  path phenotype_file
+  path covariates_file
+  path bgen_file
+  path sample_file
+
+  output:
+  tuple val(meta), path("regenie_step2_out_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+
+  script:
+  def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
+  def firth_flag  = params.regenie_firth ? "--firth --firth-se --pThresh 0.05" : ""
+  def approx_flag = params.regenie_firth_approx ? "--approx" : ""
+  """
+  cat fit_bin_l1_*_pred.list > fit_bin_l1_pred.list
+
+  regenie \
+    --step 2 \
+    --bgen ${bgen_file} \
+    --ref-first \
+    --sample ${sample_file} \
+    --phenoFile ${phenotype_file} \
+    ${bt_flag} ${firth_flag} ${approx_flag}  \
+    --covarFile ${covariates_file} \
+    --bsize ${params.regenie_bsize_step2} \
+    --pred fit_bin_l1_pred.list \
+    --threads ${task.cpus} \
+    --gz \
+    --out regenie_step2_out_${bgen_file.baseName}
+  """
+}
+
+
+
+
+
 process MergePerPhenotype {
 
   tag "merge_${phenofile.baseName}"
@@ -298,8 +341,9 @@ workflow {
       .join(step1_l1_out_grouped)             // val(meta), path(fit_bin_l1_*)
       .combine(bgen_ch)                       // path(bgen_file)
 
+  if (params.burden) {
 
-  RegenieStep2_Burden(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
+    RegenieStep2_Burden(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
                 combined_step2_in.map {it[0]}, // val(meta)
                 combined_step2_in.map {it[1]}, // path(pheno_file)
                 covariates_file,
@@ -309,8 +353,20 @@ workflow {
                 regenie_setlist_file,
                 regenie_masks_file)
 
-  step2_out = RegenieStep2_Burden.out.regenie_step2_out
+    step2_out = RegenieStep2_Burden.out.regenie_step2_out
+    // val(meta), path(step2_out_bgen_trait*)
+  } else {
 
+    RegenieStep2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
+                combined_step2_in.map {it[0]}, // val(meta)
+                combined_step2_in.map {it[1]}, // path(pheno_file)
+                covariates_file,
+                combined_step2_in.map {it[3]}, // path(bgen_file)
+                sample_file)
+
+    step2_out = RegenieStep2.out.regenie_step2_out
+    // val(meta), path(step2_out_bgen_trait*)
+  }
   // gather over bgens
   step2_out_grouped = step2_out
     .groupTuple()
