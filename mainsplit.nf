@@ -62,6 +62,7 @@ process RegenieStep1_L0 {
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
+    --threads ${task.cpus} \
     --out fit_bin_l0_${job} \
     --run-l0 fit_bin_parallel.master,${job}
 
@@ -107,12 +108,13 @@ process RegenieStep1_L1 {
     --out fit_bin_l1_\${phenotype} \
     --l1-phenoList \${phenotype} \
     --run-l1 ${master} \
+    --threads ${task.cpus} \
     --use-relative-path
   """
 }
 
 
-process RegenieStep2 {
+process RegenieStep2_Burden {
   
   tag "regenie_step2_${phenotype_file.baseName}"
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
@@ -152,7 +154,7 @@ process RegenieStep2 {
     --set-list ${regenie_gene_setlist} \
     --mask-def ${regenie_gene_masks} \
     --aaf-bins ${params.regenie_gene_aaf} \
-    --threads 2 \
+    --threads ${task.cpus} \
     --gz \
     --check-burden-files \
     --out regenie_step2_out_${bgen_file.baseName}
@@ -297,7 +299,7 @@ workflow {
       .combine(bgen_ch)                       // path(bgen_file)
 
 
-  RegenieStep2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
+  RegenieStep2_Burden(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
                 combined_step2_in.map {it[0]}, // val(meta)
                 combined_step2_in.map {it[1]}, // path(pheno_file)
                 covariates_file,
@@ -307,7 +309,7 @@ workflow {
                 regenie_setlist_file,
                 regenie_masks_file)
 
-  step2_out = RegenieStep2.out.regenie_step2_out
+  step2_out = RegenieStep2_Burden.out.regenie_step2_out
 
   // gather over bgens
   step2_out_grouped = step2_out
