@@ -228,13 +228,13 @@ process MergePerPhenotype {
 
   # Loop over phenotype names
   while read pheno; do
-    # Extract header from the first matching file
+    # Extract header from the first matching file ignoring lines starting with #
     first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 1)
-    zcat "\$first_file" | head -n 2 > "merged/\${pheno}.regenie"
+    zcat "\$first_file" | grep -v '^#' | head -n 1 > "merged/\${pheno}.regenie"
 
-    # Concatenate all matching files, skip their headers, and sort
+    # Concatenate all matching files, skip lines starting with # and one header line, and sort
     ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | while read f; do
-      zcat "\$f" | tail -n +3
+      zcat "\$f" | grep -v '^#' | tail -n +2
     done | sort -k1,1 -k2,2n >> "merged/\${pheno}.regenie"
 
     # Compress
