@@ -332,9 +332,6 @@ workflow {
      .filter {file -> !file.toString().contains("chrY")}
 
   sample_file = file(params.sample_file)
-  regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
-  regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
-  regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
 
   // scatter over bgens
   combined_step2_in = pheno_file_ch           // val(meta), path(pheno_file)        
@@ -342,6 +339,11 @@ workflow {
       .combine(bgen_ch)                       // path(bgen_file)
 
   if (params.burden) {
+
+   regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
+   regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
+   regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
+
 
     RegenieStep2_Burden(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
                 combined_step2_in.map {it[0]}, // val(meta)
