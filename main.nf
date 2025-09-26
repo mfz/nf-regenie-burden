@@ -207,43 +207,37 @@ process RegenieStep2 {
 
 process MergePerPhenotype {
 
-  tag "merge_${phenofile.baseName}"
+  tag "merge_${pheno}"
 
   publishDir "${params.outdir}", mode: 'move'
 
   input:
-  path phenofile
-  path all_result_files
+  val pheno
+  path result_files
 
   output:
   path("merged/*.regenie.gz")
 
-  
+
   script:
   """
   mkdir merged
 
-  # Extract phenotype names from header
-  head -n 1 ${phenofile} | cut -f3- | tr '\t' '\n' > pheno_names.txt
-
-  # Loop over phenotype names
-  while read pheno; do
-    # Extract header from the first matching file ignoring lines starting with #
-    first_file=\$(ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | head -n 1)
-    zcat "\$first_file" | head -n 2 | grep -v '^#' | head -n 1 > "merged/\${pheno}.regenie"
-
+  # Extract header from the first matching file ignoring lines starting with #
+  first_file=\$(ls ${result_files} | head -n 1)
+  zcat "\$first_file" | head -n 2 | grep -v '^#' | head -n 1 > "merged/${pheno}.regenie"
+  
     # Concatenate all matching files, skip lines starting with # and one header line, and sort
-    ls ${all_result_files} | grep "_\${pheno}.regenie.gz" | while read f; do
+  ls ${result_files} | while read f; do
       zcat "\$f" | grep -v '^#' | tail -n +2
-    done | sort -k1,1 -k2,2n >> "merged/\${pheno}.regenie"
+  done | sort -k1,1 -k2,2n >> "merged/${pheno}.regenie"
 
-    # Compress
-    bgzip -f "merged/\${pheno}.regenie"
-  done < pheno_names.txt
+
+  # Compress
+  bgzip -f "merged/${pheno}.regenie"
+
   """
 }
-
-
 
 
 workflow {
@@ -376,10 +370,23 @@ workflow {
           def flat = val.flatten()
           tuple(key, flat)}
   
+  // step2_out_grouped is
+  // val(meta), path(step2_out_bgen_trait*)
+
   merge_in = pheno_file_ch     // val(meta), path(pheno_file)
     .join(step2_out_grouped)   // val(meta), path(step2out)
+    .flatMap {meta_, pheno_file_, step2out_ ->
+        def header = pheno_file_.head(1).readLines().first().split(/\s+/)
+        def phenos = header - ['FID','IID']
 
-  MergePerPhenotype( merge_in.map {it[1]},
-                     merge_in.map {it[2]})
+        phenos.collect { pheno ->
+            // collect ALL matching files for this phenotype
+            def matches = step2out_.findAll { it.name.endsWith("_${pheno}.regenie.gz") }
+            matches ? tuple(meta_, pheno_file_, pheno, matches) : null
+        }.findAll()
+    }
+    
+MergePerPhenotype (merge_in.map {it[2]},
+                   merge_in.map {it[3]})
 
 }
