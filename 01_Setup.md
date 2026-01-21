@@ -16,9 +16,20 @@ curl -s https://get.nextflow.io | bash
 git clone git@github.com:mfz/nf-regenie-burden.git
 ```
 
+## Data setup
+
+**NOTE**: The remainder of this file is about creation of genomic datasets.
+These datasets should be in bucket fc-secure-9a611390-ad15-4113-99db-93bd4a7b4bf4 (GWAS of Migraine workspace).
+
+`gsutil ls gs://fc-secure-9a611390-ad15-4113-99db-93bd4a7b4bf4` shows available directories
+
+Due to high storage costs (around 80$/month), the data should be used from there.
+
+
 ### Creating split ACAF bgen files
 
 **NOTE**: This takes about 4 TB of space in the bucket, which costs around 80$/month. It is, therefore, recommended to do this only in one workspace bucket. So check if this already exists!
+
 
 Google Cloud Batch does not have access to the AllOfUS genotype buckets. So we need to copy them to our own workspace buckets. We also want to split them into chunks of 200 000 variants, such that the jobs can be run within an hour or so. This allows us to use the cheaper spot instances.
 
