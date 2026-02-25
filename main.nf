@@ -14,6 +14,7 @@ process PlinkMacFilter {
 
   script:
   def mac_threshold = params.plink_mac ?: 5
+  def maf_threshold = params.plink_maf ?: 0.01
   """
   # Extract samples from phenotype file (FID IID only)
   cut -f1,2 ${phenotype_file} | tail -n +2 > samples.txt
@@ -36,9 +37,8 @@ process RegenieStep1_Split {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  tuple val(meta), path(phenotype_file)  
+  tuple val(meta), path(phenotype_file), path(mac_snplists)  // value  
   path covariates_file  // value
-  path mac_snplists
   val num_chunks
 
   
@@ -285,12 +285,14 @@ workflow {
   mac_snplists = PlinkMacFilter.out.plink_mac_snplist
   // tuple val(meta), path(${meta}.snplist)
 
+  pheno_with_snplist = pheno_file_ch
+  .join(mac_snplists)  // val(meta), path(pheno_file), path(snplist)
+
 
 
   RegenieStep1_Split(genotypes_array_tuple, 
-                     pheno_file_ch, 
+                     pheno_with_snplist, 
                      covariates_file, 
-                     mac_snplists,
                      10)
 
   step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out
@@ -406,7 +408,7 @@ workflow {
     .flatMap {meta_, pheno_file_, step2out_ ->
         def header = pheno_file_.head(1).readLines().first().split(/\s+/)
         def phenos = header - ['FID','IID']
-
+ 
         phenos.collect { pheno ->
             // collect ALL matching files for this phenotype
             def matches = step2out_.findAll { it.name.endsWith("_${pheno}.regenie.gz") }
