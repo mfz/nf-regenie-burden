@@ -72,7 +72,7 @@ process RegenieStep1_L0 {
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
   path covariates_file // value
-  tuple val(meta), path(phenotype_file), path(step1_snplists), path(step1_master), val(job) // channel
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(step1_master), val(job) // channel
   
   output:
   tuple val(meta), path("fit_bin_parallel*"), emit: regenie_step1_l0_out
@@ -83,6 +83,7 @@ process RegenieStep1_L0 {
   regenie \
     --step 1 \
     --bed ${genotype_array} \
+    --extract ${mac_snplists} \
     --phenoFile ${phenotype_file} \
     ${bt_flag} \
     --covarFile ${covariates_file} \
@@ -107,7 +108,7 @@ process RegenieStep1_L1 {
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
   path covariates_file // value
-  tuple val(meta), path(phenotype_file), path(step1_snplists), path(master), path(locos), val(phenonum) // channel
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(master), path(locos), val(phenonum) // channel
  
 
   output:
@@ -122,6 +123,7 @@ process RegenieStep1_L1 {
   regenie \
     --step 1 \
     --bed ${genotype_array} \
+    --extract ${mac_snplists} \
     --phenoFile ${phenotype_file} \
     ${bt_flag} \
     --covarFile ${covariates_file} \
@@ -298,14 +300,14 @@ workflow {
   step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out
   // channel tuple val(meta), path(*.snplist), path(master)
 
-  step1_l0_in = pheno_file_ch  // val(meta), path(pheno_file)
+  step1_l0_in = pheno_with_snplist // val(meta), path(pheno_file), path(macsnplist)
       .join(step1_split_out)   // val(meta), path(*.snplist), path(master)
 
 
   // scatter into 10 jobs
   jobs = Channel.from(1..10)
 
-  combined_step1_l0_in = step1_l0_in.combine(jobs) // val(meta), path(pheno_file), path(*.snplist), path(master), val(job)
+  combined_step1_l0_in = step1_l0_in.combine(jobs) // val(meta), path(pheno_file), path(macsnplist), path(*.snplist), path(master), val(job)
 
   RegenieStep1_L0(genotypes_array_tuple,
                  covariates_file,
@@ -326,13 +328,13 @@ workflow {
   // scatter by phenotype
   // input to RegenieStep1_L1 is
   // geno, pheno , covar, job*_Y*, master, phenonum
-  step1_l1_in = pheno_file_ch      // val(meta), path(pheno)
+  step1_l1_in = pheno_with_snplist      // val(meta), path(pheno), path(macsnplist)
       .join(step1_split_out)       // val(meta), path(*snplist), path(master)
       .join(step1_l0_out_grouped)  // val(meta), path(job*_Y*)
 
   phenonums = Channel.from(1..params.num_phenotypes_per_file)
   combined_step1_l1_in = step1_l1_in.combine(phenonums)
-  // val(meta), path(pheno), path(*snplist), path(master), path(job*_Y*), val(phenonum)
+  // val(meta), path(pheno), path(macsnplist), path(*snplist), path(master), path(job*_Y*), val(phenonum)
 
   RegenieStep1_L1(genotypes_array_tuple,
                   covariates_file,
