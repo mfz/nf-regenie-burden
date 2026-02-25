@@ -1,6 +1,35 @@
 nextflow.enable.dsl=2
 
 
+process PlinkMacFilter {
+
+  publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
+
+  input:
+  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)
+  tuple val(meta), path(phenotype_file)
+
+  output:
+  tuple val(meta), path("${meta}.snplist"), emit: plink_mac_snplist
+
+  script:
+  def mac_threshold = params.plink_mac ?: 5
+  """
+  # Extract samples from phenotype file (FID IID only)
+  cut -f1,2 ${phenotype_file} | tail -n +2 > samples.txt
+
+  # Run PLINK with MAC filter and keep only these samples
+  plink \
+    --bfile ${genotype_array} \
+    --keep samples.txt \
+    --mac ${mac_threshold} \
+    --write-snplist \
+    --out ${meta}
+  """
+}
+
+
+
 process RegenieStep1_Split {
 
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
@@ -9,6 +38,7 @@ process RegenieStep1_Split {
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
   tuple val(meta), path(phenotype_file)  
   path covariates_file  // value
+  path mac_snplists
   val num_chunks
 
   
@@ -24,6 +54,7 @@ process RegenieStep1_Split {
     --phenoFile ${phenotype_file} \
     ${bt_flag} \
     --covarFile ${covariates_file} \
+    --extract ${mac_snplists} \
     --bsize ${params.regenie_bsize_step1} \
     --ref-first \
     --lowmem \
@@ -40,13 +71,9 @@ process RegenieStep1_L0 {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  val meta
-  path phenotype_file   //value
-  path covariates_file  // value
-  path step1_snplists
-  path step1_master
-  val job
-
+  path covariates_file // value
+  tuple val(meta), path(phenotype_file), path(step1_snplists), path(step1_master), val(job) // channel
+  
   output:
   tuple val(meta), path("fit_bin_parallel*"), emit: regenie_step1_l0_out
 
@@ -79,13 +106,9 @@ process RegenieStep1_L1 {
 
   input:
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  val meta
-  path phenotype_file   //value
-  path covariates_file  // value
-  path locos
-  path master
-  val phenonum
-  
+  path covariates_file // value
+  tuple val(meta), path(phenotype_file), path(step1_snplists), path(master), path(locos), val(phenonum) // channel
+ 
 
   output:
   tuple val(meta), path("fit_bin_l1*"), emit: regenie_step1_l1_out
@@ -243,8 +266,8 @@ process MergePerPhenotype {
 workflow {
 
   genotypes_array_tuple = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
-                          .map{name, files -> tuple(name, files[1], files[0], files[2])}.first()
-  // tuple val(plink_root), path(bed), path(bin), path(fam)
+                          .map{name, files -> tuple(name, files[0], files[1], files[2])}.first()
+  // tuple val(plink_root), path(bed), path(bim), path(fam)  
 
   pheno_file_ch = Channel.fromPath(params.phenotypes_files) 
                   .map {file ->
@@ -255,9 +278,19 @@ workflow {
 
   covariates_file = file(params.covariates_file)
 
+
+  PlinkMacFilter(genotypes_array_tuple,
+                 pheno_file_ch)
+
+  mac_snplists = PlinkMacFilter.out.plink_mac_snplist
+  // tuple val(meta), path(${meta}.snplist)
+
+
+
   RegenieStep1_Split(genotypes_array_tuple, 
                      pheno_file_ch, 
                      covariates_file, 
+                     mac_snplists,
                      10)
 
   step1_split_out = RegenieStep1_Split.out.regenie_step1_split_out
@@ -270,15 +303,11 @@ workflow {
   // scatter into 10 jobs
   jobs = Channel.from(1..10)
 
-  combined_step1_l0_in = step1_l0_in.combine(jobs)
+  combined_step1_l0_in = step1_l0_in.combine(jobs) // val(meta), path(pheno_file), path(*.snplist), path(master), val(job)
 
   RegenieStep1_L0(genotypes_array_tuple,
-                                 combined_step1_l0_in.map {it[0]}, // meta
-                                 combined_step1_l0_in.map {it[1]}, // phenofile
-                                 covariates_file,
-                                 combined_step1_l0_in.map {it[2]}, // snplists
-                                 combined_step1_l0_in.map {it[3]}, // master
-                                 combined_step1_l0_in.map {it[4]}) // job
+                 covariates_file,
+                 combined_step1_l0_in)
   
   step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
   // channel tuple val(meta), path(jobJ_Y*)
@@ -301,15 +330,14 @@ workflow {
 
   phenonums = Channel.from(1..params.num_phenotypes_per_file)
   combined_step1_l1_in = step1_l1_in.combine(phenonums)
+  // val(meta), path(pheno), path(*snplist), path(master), path(job*_Y*), val(phenonum)
 
   RegenieStep1_L1(genotypes_array_tuple,
-                                 combined_step1_l1_in.map {it[0]}, // meta
-                                 combined_step1_l1_in.map {it[1]}, // phenotype_file
-                                 covariates_file,
-                                 combined_step1_l1_in.map {it[4]}, // job*_Y*
-                                 combined_step1_l1_in.map {it[3]}, // master
-                                 combined_step1_l1_in.map {it[5]}) // phenonum
-  
+                  covariates_file,
+                  combined_step1_l1_in)
+
+
+
   step1_l1_out = RegenieStep1_L1.out.regenie_step1_l1_out
   
   // channel tuple val(meta), path(fit_bin_l1_pheno)
