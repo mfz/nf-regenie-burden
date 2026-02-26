@@ -145,11 +145,8 @@ process RegenieStep2_Burden {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  path step1_out_files
-  val meta
-  path phenotype_file
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_out_files), path(bgen_file)
   path covariates_file
-  path bgen_file
   path sample_file
   path regenie_gene_anno
   path regenie_gene_setlist
@@ -193,11 +190,8 @@ process RegenieStep2 {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  path step1_out_files
-  val meta
-  path phenotype_file
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_out_files), path(bgen_file)
   path covariates_file
-  path bgen_file
   path sample_file
 
   output:
@@ -360,7 +354,7 @@ workflow {
   sample_file = file(params.sample_file)
 
   // scatter over bgens
-  combined_step2_in = pheno_file_ch           // val(meta), path(pheno_file)        
+  combined_step2_in = pheno_with_snplist           // val(meta), path(pheno_file), path(mac_snplist)        
       .join(step1_l1_out_grouped)             // val(meta), path(fit_bin_l1_*)
       .combine(bgen_ch)                       // path(bgen_file)
 
@@ -371,11 +365,8 @@ workflow {
    regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
 
 
-    RegenieStep2_Burden(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
-                combined_step2_in.map {it[0]}, // val(meta)
-                combined_step2_in.map {it[1]}, // path(pheno_file)
+    RegenieStep2_Burden(combined_step2_in
                 covariates_file,
-                combined_step2_in.map {it[3]}, // path(bgen_file)
                 sample_file,
                 regenie_anno_file,
                 regenie_setlist_file,
@@ -385,11 +376,8 @@ workflow {
     // val(meta), path(step2_out_bgen_trait*)
   } else {
 
-    RegenieStep2(combined_step2_in.map {it[2]}, // path(fit_bin_l1_*)
-                combined_step2_in.map {it[0]}, // val(meta)
-                combined_step2_in.map {it[1]}, // path(pheno_file)
+    RegenieStep2(combined_step2_in,
                 covariates_file,
-                combined_step2_in.map {it[3]}, // path(bgen_file)
                 sample_file)
 
     step2_out = RegenieStep2.out.regenie_step2_out
