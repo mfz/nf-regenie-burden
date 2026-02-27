@@ -5,6 +5,7 @@ We need a recent version of nextflow which we install under `~` (HOME directory)
 
 ```sh
 curl -s https://get.sdkman.io | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
 sdk install java 17.0.10-tem
 curl -s https://get.nextflow.io | bash
 ```
