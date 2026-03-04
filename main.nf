@@ -228,33 +228,61 @@ process MergePerPhenotype {
 
   tag "merge_${pheno}"
 
-  publishDir "${params.outdir}", mode: 'move'
 
   input:
   val pheno
   path result_files
 
   output:
-  path("merged/*.regenie.gz")
+  tuple val(pheno), path("*.regenie.gz")
 
 
   script:
   """
-  mkdir merged
 
   # Extract header from the first matching file ignoring lines starting with #
   first_file=\$(ls ${result_files} | head -n 1)
-  zcat "\$first_file" | head -n 2 | grep -v '^#' | head -n 1 > "merged/${pheno}.regenie"
+  zcat "\$first_file" | head -n 2 | grep -v '^#' | head -n 1 > "${pheno}.regenie"
   
     # Concatenate all matching files, skip lines starting with # and one header line, and sort
   ls ${result_files} | while read f; do
       zcat "\$f" | grep -v '^#' | tail -n +2
-  done | sort -k1,1 -k2,2n >> "merged/${pheno}.regenie"
+  done | sort -k1,1 -k2,2n >> "${pheno}.regenie"
 
 
   # Compress
-  bgzip -f "merged/${pheno}.regenie"
+  bgzip -f "${pheno}.regenie"
 
+  """
+}
+
+
+
+process Generate_Extassoc_Input {
+
+  tag "extassoc_${pheno}"
+
+  publishDir "${params.outdir}/${pheno}", mode: 'move'
+
+  input:
+  tuple val(pheno), path(regenie_results)
+  path(phenotype_counts)
+
+  output:
+  tuple val(pheno), path(regenie_results), path("phenotype.txt")
+
+
+  script:
+  """
+  echo "study_name: ${params.study_name}" >> phenotype.txt
+  echo "phenotype_name: ${pheno}" >> phenotype.txt
+  echo "phenotype_description: See ${params.ticket}." >> phenotype.txt
+  echo "trait_type: ${params.trait_type}" >> phenotype.txt
+  echo "model: ${params.model}" >> phenotype.txt
+  echo "cohort: ${params.ancestry}" >> phenotype.txt
+  awk "{(if \$1 == ${params.ancestry} &&  \$2 == ${pheno}) print "phenotype_no_samples: %s\n", $3 }" ${phenotype_counts} >> phenotype.txt
+  awk "{(if \$1 == ${params.ancestry} &&  \$2 == ${pheno}) print "control_no_samples: %s\n", $4 }" ${phenotype_counts} >> phenotype.txt
+  echo "se_beta: yes" >> phenotype.txt
   """
 }
 
@@ -408,5 +436,7 @@ workflow {
     
 MergePerPhenotype (merge_in.map {it[2]},
                    merge_in.map {it[3]})
+
+Generate_Extassoc_Input (MergePerPhenotype, params.phenotype_counts)
 
 }
