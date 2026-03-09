@@ -115,9 +115,14 @@ process RegenieStep1_L1 {
   tuple val(meta), path("fit_bin_l1*"), emit: regenie_step1_l1_out
   //path("fit_bin_l1_${phenotype}_pred.list"), emit: regenie_step1_l1_predlist
 
+
+
   script:
   def bt_flag = params.phenotypes_binary_trait ? "--bt" : ""
   """
+  echo "MASTER PATH: ${master}"
+  ls -l ${master}
+
   phenotype=\$(head -n 1 ${phenotype_file} | cut -f\$((${phenonum}+2)) )
 
   regenie \
@@ -266,22 +271,24 @@ process Generate_Extassoc_Input {
 
   input:
   tuple val(pheno), path(regenie_results)
-  path(phenotype_counts)
+  path(ancestry_file)
+  path(phenotypes_files)
 
   output:
-  tuple val(pheno), path(regenie_results), path("phenotype.txt")
+  tuple val(pheno), path(regenie_results), path("phenotype.txt"), path("phenotype_count.tsv")
 
 
   script:
   """
+  join <(tail -n +2 ${ancestry_file} | sort) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotypes_files} | sort) | awk '{print \$4, \$5}' | sort | uniq -c | awk 'BEGIN{print "pheno","ancestry","cases","controls"} {if(\$3==1) one[\$2]=\$1; else zero[\$2]=\$1} END{for(n in one) print "${pheno}", n, one[n], zero[n]}' OFS='\t'  > phenotype_count.tsv
   echo "study_name: ${params.study_name}" >> phenotype.txt
   echo "phenotype_name: ${pheno}" >> phenotype.txt
   echo "phenotype_description: See ${params.ticket}." >> phenotype.txt
   echo "trait_type: ${params.trait_type}" >> phenotype.txt
   echo "model: ${params.model}" >> phenotype.txt
   echo "cohort: ${params.ancestry}" >> phenotype.txt
-  awk "{(if \$1 == ${params.ancestry} &&  \$2 == ${pheno}) print "phenotype_no_samples: %s\n", $3 }" ${phenotype_counts} >> phenotype.txt
-  awk "{(if \$1 == ${params.ancestry} &&  \$2 == ${pheno}) print "control_no_samples: %s\n", $4 }" ${phenotype_counts} >> phenotype.txt
+  awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) {printf "phenotype_no_samples: %s\\n", \$3}' phenotype_count.tsv >> phenotype.txt
+  awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) { printf "control_no_samples: %s\\n", \$4}' phenotype_count.tsv >> phenotype.txt
   echo "se_beta: yes" >> phenotype.txt
   """
 }
@@ -393,7 +400,7 @@ workflow {
    regenie_masks_file   = file(params.regenie_gene_masks, checkIfExists: true)
 
 
-    RegenieStep2_Burden(combined_step2_in
+    RegenieStep2_Burden(combined_step2_in,
                 covariates_file,
                 sample_file,
                 regenie_anno_file,
@@ -437,6 +444,6 @@ workflow {
 MergePerPhenotype (merge_in.map {it[2]},
                    merge_in.map {it[3]})
 
-Generate_Extassoc_Input (MergePerPhenotype, params.phenotype_counts)
+Generate_Extassoc_Input (MergePerPhenotype.out, params.ancestry_file, params.phenotypes_files)
 
 }

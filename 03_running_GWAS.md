@@ -22,7 +22,7 @@ We, therefore, need to copy the phenotype files into the workspace bucket.
 Set parameters in `nextflow.config` and run the pipeline using 
 
 ```sh
-~/nextflow run main.nf -profile gcb,spot -with-report report.html -with_trace trace.tsv
+~/nextflow run main.nf -profile gcb,spot -with-report report.html -with-trace trace.tsv -resume
 ```
 
 - If the spot machines are interrupted, the pipeline run can be continued using the `-resume` flag.
