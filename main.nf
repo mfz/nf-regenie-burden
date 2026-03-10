@@ -280,7 +280,7 @@ process Generate_Extassoc_Input {
 
   script:
   """
-  join <(tail -n +2 ${ancestry_file} | sort) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotypes_files} | sort) | awk '{print \$4, \$5}' | sort ancestry_pheno_joined.tsv
+  join <(tail -n +2 ${ancestry_file} | sort) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotypes_files} | sort) | awk '{print \$4, \$5}' | sort > ancestry_pheno_joined.tsv
   if [[ "${params.trait_type}" == "cc" ]]; then
     uniq -c ancestry_pheno_joined.tsv | awk 'BEGIN{print "pheno","ancestry","cases","controls"} {if(\$3==1) one[\$2]=\$1; else if(\$3==0) zero[\$2]=\$1} END{for(n in one) print "${pheno}", n, one[n], zero[n]}' OFS='\t'  > phenotype_count.tsv
   fi
@@ -294,7 +294,7 @@ process Generate_Extassoc_Input {
     awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) {printf "phenotype_no_samples: %s\\n", \$3}' phenotype_count.tsv >> phenotype.txt
     awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) { printf "control_no_samples: %s\\n", \$4}' phenotype_count.tsv >> phenotype.txt
   else
-    awk -v ancestry="${params.ancestry}" 'BEGIN{c=0}{if(tolower(\$1) == tolower(ancestry) && \$2 ~ /^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$/) c+=1}END{printf "phenotype_no_samples: %s\\n", c}' ancestry_pheno_joined.tsv >> phenotype.txt
+    awk -v ancestry="${params.ancestry}" -v num_re='^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?\$' 'BEGIN{c=0}{if(tolower(\$1) == tolower(ancestry) && \$2 ~ num_re) c+=1}END{printf "phenotype_no_samples: %s\\n", c}' ancestry_pheno_joined.tsv >> phenotype.txt
     echo "control_no_samples: 0" >> phenotype.txt
   fi
   echo "se_beta: yes" >> phenotype.txt
