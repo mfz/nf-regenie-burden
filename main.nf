@@ -235,11 +235,12 @@ process MergePerPhenotype {
 
 
   input:
+  path phenotype_file
   val pheno
   path result_files
 
   output:
-  tuple val(pheno), path("*.regenie.gz")
+  tuple val(pheno) ,path(phenotype_file) ,path("*.regenie.gz")
 
 
   script:
@@ -270,9 +271,8 @@ process Generate_Extassoc_Input {
   publishDir "${params.outdir}/${pheno}", mode: 'move'
 
   input:
-  tuple val(pheno), path(regenie_results)
-  path(ancestry_file)
-  path(phenotypes_files)
+  tuple val(pheno), path(phenotype_file), path(regenie_results)
+  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
 
   output:
   tuple val(pheno), path(regenie_results), path("phenotype.txt")
@@ -280,10 +280,7 @@ process Generate_Extassoc_Input {
 
   script:
   """
-  join <(tail -n +2 ${ancestry_file} | sort) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotypes_files} | sort) | awk '{print \$4, \$5}' | sort > ancestry_pheno_joined.tsv
-  if [[ "${params.trait_type}" == "cc" ]]; then
-    uniq -c ancestry_pheno_joined.tsv | awk 'BEGIN{print "pheno","ancestry","cases","controls"} {if(\$3==1) one[\$2]=\$1; else if(\$3==0) zero[\$2]=\$1} END{for(n in one) print "${pheno}", n, one[n], zero[n]}' OFS='\t'  > phenotype_count.tsv
-  fi
+  join <(sort ${plink_fam}) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotype_file} | sort) | awk '{print \$NF}' > ancestry_pheno_joined.tsv
   echo "study_name: ${params.study_name}" >> phenotype.txt
   echo "phenotype_name: ${pheno}" >> phenotype.txt
   echo "phenotype_description: See ${params.ticket}." >> phenotype.txt
@@ -291,10 +288,10 @@ process Generate_Extassoc_Input {
   echo "model: ${params.model}" >> phenotype.txt
   echo "cohort: ${params.ancestry}" >> phenotype.txt
   if [[ "${params.trait_type}" == "cc" ]]; then
-    awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) {printf "phenotype_no_samples: %s\\n", \$3}' phenotype_count.tsv >> phenotype.txt
-    awk -v ancestry="${params.ancestry}" -v pheno="${pheno}" 'NR > 1 && \$1 == pheno && tolower(\$2) == tolower(ancestry) { printf "control_no_samples: %s\\n", \$4}' phenotype_count.tsv >> phenotype.txt
+    echo "phenotype_no_samples: \$(grep -c "1" ancestry_pheno_joined.tsv)" >> phenotype.txt
+    echo "control_no_samples: \$(grep -c "0" ancestry_pheno_joined.tsv )">> phenotype.txt
   else
-    awk -v ancestry="${params.ancestry}" -v num_re='^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?\$' 'BEGIN{c=0}{if(tolower(\$1) == tolower(ancestry) && \$2 ~ num_re) c+=1}END{printf "phenotype_no_samples: %s\\n", c}' ancestry_pheno_joined.tsv >> phenotype.txt
+    awk -v num_re='^-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?\$' 'BEGIN{c=0}{if (\$1 ~ num_re) c+=1}END{printf "phenotype_no_samples: %s\\n", c}' ancestry_pheno_joined.tsv >> phenotype.txt
     echo "control_no_samples: 0" >> phenotype.txt
   fi
   echo "se_beta: yes" >> phenotype.txt
@@ -316,6 +313,13 @@ workflow {
   // channel of tuple val(meta), path(pheno_file)
 
   covariates_file = file(params.covariates_file)
+
+  n_cols_ch = pheno_file_ch.map { meta, pheno_file ->
+   tuple(meta, pheno_file.readLines().first().split('\t').size() - 2)
+  }.flatMap { name, num ->
+    (1..num).collect { i -> tuple(name, i) }
+}
+ 
 
 
   PlinkMacFilter(genotypes_array_tuple,
@@ -369,8 +373,7 @@ workflow {
       .join(step1_split_out)       // val(meta), path(*snplist), path(master)
       .join(step1_l0_out_grouped)  // val(meta), path(job*_Y*)
 
-  phenonums = Channel.from(1..params.num_phenotypes_per_file)
-  combined_step1_l1_in = step1_l1_in.combine(phenonums)
+  combined_step1_l1_in = step1_l1_in.combine(n_cols_ch, by: 0)
   // val(meta), path(pheno), path(macsnplist), path(*snplist), path(master), path(job*_Y*), val(phenonum)
 
   RegenieStep1_L1(genotypes_array_tuple,
@@ -436,7 +439,7 @@ workflow {
   // step2_out_grouped is
   // val(meta), path(step2_out_bgen_trait*)
 
-  merge_in = pheno_file_ch     // val(meta), path(pheno_file)
+    merge_in = pheno_file_ch     // val(meta), path(pheno_file)
     .join(step2_out_grouped)   // val(meta), path(step2out)
     .flatMap {meta_, pheno_file_, step2out_ ->
         def header = pheno_file_.head(1).readLines().first().split(/\s+/)
@@ -448,10 +451,10 @@ workflow {
             matches ? tuple(meta_, pheno_file_, pheno, matches) : null
         }.findAll()
     }
-    
-MergePerPhenotype (merge_in.map {it[2]},
+MergePerPhenotype (merge_in.map {it[1]},
+		   merge_in.map {it[2]},
                    merge_in.map {it[3]})
 
-Generate_Extassoc_Input (MergePerPhenotype.out, params.ancestry_file, params.phenotypes_files)
+Generate_Extassoc_Input (MergePerPhenotype.out, genotypes_array_tuple)
 
 }
