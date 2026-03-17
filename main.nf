@@ -235,12 +235,12 @@ process MergePerPhenotype {
 
 
   input:
-  path phenotype_file
+  val meta
   val pheno
   path result_files
 
   output:
-  tuple val(pheno) ,path(phenotype_file) ,path("*.regenie.gz")
+  tuple val(meta), val(pheno) ,path("*.regenie.gz")
 
 
   script:
@@ -271,7 +271,7 @@ process Generate_Extassoc_Input {
   publishDir "${params.outdir}/${pheno}", mode: 'move'
 
   input:
-  tuple val(pheno), path(phenotype_file), path(regenie_results)
+  tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results)
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
 
   output:
@@ -451,10 +451,12 @@ workflow {
             matches ? tuple(meta_, pheno_file_, pheno, matches) : null
         }.findAll()
     }
-MergePerPhenotype (merge_in.map {it[1]},
+MergePerPhenotype (merge_in.map {it[0]},
 		   merge_in.map {it[2]},
                    merge_in.map {it[3]})
 
-Generate_Extassoc_Input (MergePerPhenotype.out, genotypes_array_tuple)
+generate_extassoc_in = pheno_file_ch.join(MergePerPhenotype.out)
+
+Generate_Extassoc_Input (generate_extassoc_in, genotypes_array_tuple)
 
 }
