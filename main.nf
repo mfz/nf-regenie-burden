@@ -268,25 +268,29 @@ process Generate_Extassoc_Input {
 
   tag "extassoc_${pheno}"
 
-  publishDir "${params.outdir}/${pheno}", mode: 'move'
+  publishDir "${params.outdir}/${study_name}/${pheno}/${model}", mode: 'move'
 
   input:
   tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results)
   tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  val ancestry
+  val model
 
   output:
   tuple val(pheno), path(regenie_results), path("phenotype.txt")
 
+  
 
   script:
+  def study_name = "A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}"
   """
   join <(sort ${plink_fam}) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotype_file} | sort) | awk '{print \$NF}' > ancestry_pheno_joined.tsv
-  echo "study_name: ${params.study_name}" >> phenotype.txt
+  echo "study_name: ${study_name}" >> phenotype.txt
   echo "phenotype_name: ${pheno}" >> phenotype.txt
   echo "phenotype_description: See ${params.ticket}." >> phenotype.txt
   echo "trait_type: ${params.trait_type}" >> phenotype.txt
-  echo "model: ${params.model}" >> phenotype.txt
-  echo "cohort: ${params.ancestry}" >> phenotype.txt
+  echo "model: ${model}" >> phenotype.txt
+  echo "cohort: ${ancestry}" >> phenotype.txt
   if [[ "${params.trait_type}" == "cc" ]]; then
     echo "phenotype_no_samples: \$(grep -c "1" ancestry_pheno_joined.tsv)" >> phenotype.txt
     echo "control_no_samples: \$(grep -c "0" ancestry_pheno_joined.tsv )">> phenotype.txt
@@ -299,14 +303,26 @@ process Generate_Extassoc_Input {
 }
 
 
-workflow {
+workflow RUN_PHENOTYPE{
 
-  genotypes_array_tuple = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
-                          .map{name, files -> tuple(name, files[0], files[1], files[2])}.first()
-  // tuple val(plink_root), path(bed), path(bim), path(fam)  
+take:
+in_ch
 
-  pheno_file_ch = Channel.fromPath(params.phenotypes_files) 
-                  .map {file ->
+main:
+  ancestry = in_ch.map {ancestry, model, plink_files, phenotype_file -> ancestry }
+  model = in_ch.map {ancestry, model, plink_files, phenotype_file -> model}
+  genotypes_array_tuple = in_ch
+    .map { ancestry, model, plink_files, phenotype_file ->
+
+        def bed = plink_files.find { it.name.endsWith('.bed') }
+
+        def name = bed.baseName   // e.g. sample1 from sample1.bed
+     
+	     tuple(name, plink_files[0], plink_files[1], plink_files[2])
+    }
+
+
+  pheno_file_ch = in_ch.map {ancestry, model, plink_files, phenotype_file -> phenotype_file }.map {file ->
                         def meta = file.baseName
                         [meta, file]
                   }
@@ -457,6 +473,27 @@ MergePerPhenotype (merge_in.map {it[0]},
 
 generate_extassoc_in = pheno_file_ch.join(MergePerPhenotype.out)
 
-Generate_Extassoc_Input (generate_extassoc_in, genotypes_array_tuple)
+Generate_Extassoc_Input (generate_extassoc_in, genotypes_array_tuple, ancestry, model)
 
+}
+
+workflow {
+
+def suffix_map = [ 'A':'', 'AX':'_female', 'AY':'_male' ]
+
+anc_model_pheno_ch = Channel.from(params.ancestries).combine(Channel.from(params.models)).combine(Channel.fromPath(params.phenotypes_files)).map{
+      ancestry, model, phenotype_file ->
+        def suffix = suffix_map[model]
+
+        tuple (
+          ancestry,
+          model,
+          files("${params.WORKSPACE_BUCKET_GWAS_MIGRAINE}/arrays/${ancestry}/arrays_${ancestry}${suffix}_qcfiltered.{bed,bim,fam}"),
+	  phenotype_file
+        )
+    }
+
+anc_model_pheno_ch.view()
+
+RUN_PHENOTYPE(anc_model_pheno_ch)
 }
