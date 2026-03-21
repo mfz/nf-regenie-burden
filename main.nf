@@ -6,9 +6,7 @@ process PlinkMacFilter {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)
-  tuple val(meta), path(phenotype_file)
-
+  tuple val(meta), path(phenotype_file), val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)
   output:
   tuple val(meta), path("${meta}.snplist"), emit: plink_mac_snplist
 
@@ -36,8 +34,7 @@ process RegenieStep1_Split {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  tuple val(meta), path(phenotype_file), path(mac_snplists)  // value  
+  tuple val(meta), path(phenotype_file), path(mac_snplists) , val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)
   path covariates_file  // value
   val num_chunks
 
@@ -70,9 +67,8 @@ process RegenieStep1_L0 {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(step1_master), val(job) ,val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // 
   path covariates_file // value
-  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(step1_master), val(job) // channel
   
   output:
   tuple val(meta), path("fit_bin_parallel*"), emit: regenie_step1_l0_out
@@ -106,9 +102,8 @@ process RegenieStep1_L1 {
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(master), path(locos), val(phenonum), val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)
   path covariates_file // value
-  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_snplists), path(master), path(locos), val(phenonum) // channel
  
 
   output:
@@ -268,13 +263,10 @@ process Generate_Extassoc_Input {
 
   tag "extassoc_${pheno}"
 
-  publishDir "${params.outdir}/${study_name}/${pheno}/${model}", mode: 'move'
+  publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
 
   input:
-  tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results)
-  tuple val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam)   // value
-  val ancestry
-  val model
+  tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results),  val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam), val(ancestry), val(model)
 
   output:
   tuple val(pheno), path(regenie_results), path("phenotype.txt")
@@ -309,22 +301,20 @@ take:
 in_ch
 
 main:
-  ancestry = in_ch.map {ancestry, model, plink_files, phenotype_file -> ancestry }
-  model = in_ch.map {ancestry, model, plink_files, phenotype_file -> model}
+  ancestry_model = in_ch.map {meta, ancestry, model, plink_files, phenotype_file -> tuple(meta, ancestry, model) }
   genotypes_array_tuple = in_ch
-    .map { ancestry, model, plink_files, phenotype_file ->
+    .map { meta, ancestry, model, plink_files, phenotype_file ->
 
         def bed = plink_files.find { it.name.endsWith('.bed') }
 
         def name = bed.baseName   // e.g. sample1 from sample1.bed
      
-	     tuple(name, plink_files[0], plink_files[1], plink_files[2])
+	     tuple(meta, name, plink_files[0], plink_files[1], plink_files[2])
     }
 
 
-  pheno_file_ch = in_ch.map {ancestry, model, plink_files, phenotype_file -> phenotype_file }.map {file ->
-                        def meta = file.baseName
-                        [meta, file]
+  pheno_file_ch = in_ch.map {meta, ancestry, model, plink_files, phenotype_file ->
+                        [meta, phenotype_file]
                   }
   // channel of tuple val(meta), path(pheno_file)
 
@@ -336,10 +326,9 @@ main:
     (1..num).collect { i -> tuple(name, i) }
 }
  
+  mac_in = pheno_file_ch.join(genotypes_array_tuple)
 
-
-  PlinkMacFilter(genotypes_array_tuple,
-                 pheno_file_ch)
+  PlinkMacFilter(mac_in)
 
   mac_snplists = PlinkMacFilter.out.plink_mac_snplist
   // tuple val(meta), path(${meta}.snplist)
@@ -347,10 +336,9 @@ main:
   pheno_with_snplist = pheno_file_ch
   .join(mac_snplists)  // val(meta), path(pheno_file), path(snplist)
 
+  step1_split_in = pheno_with_snplist.join(genotypes_array_tuple)
 
-
-  RegenieStep1_Split(genotypes_array_tuple, 
-                     pheno_with_snplist, 
+  RegenieStep1_Split(step1_split_in, 
                      covariates_file, 
                      10)
 
@@ -364,11 +352,12 @@ main:
   // scatter into 10 jobs
   jobs = Channel.from(1..10)
 
-  combined_step1_l0_in = step1_l0_in.combine(jobs) // val(meta), path(pheno_file), path(macsnplist), path(*.snplist), path(master), val(job)
+  combined_step1_l0_jobs = step1_l0_in.combine(jobs) // val(meta), path(pheno_file), path(macsnplist), path(*.snplist), path(master), val(job)
 
-  RegenieStep1_L0(genotypes_array_tuple,
-                 covariates_file,
-                 combined_step1_l0_in)
+regeniestep1_l0_in = combined_step1_l0_jobs.combine(genotypes_array_tuple ,by:0)
+
+  RegenieStep1_L0(regeniestep1_l0_in,
+                 covariates_file)
   
   step1_l0_out = RegenieStep1_L0.out.regenie_step1_l0_out
   // channel tuple val(meta), path(jobJ_Y*)
@@ -392,9 +381,8 @@ main:
   combined_step1_l1_in = step1_l1_in.combine(n_cols_ch, by: 0)
   // val(meta), path(pheno), path(macsnplist), path(*snplist), path(master), path(job*_Y*), val(phenonum)
 
-  RegenieStep1_L1(genotypes_array_tuple,
-                  covariates_file,
-                  combined_step1_l1_in)
+  regenie_step1_l1_in = combined_step1_l1_in.combine(genotypes_array_tuple, by:0)
+  RegenieStep1_L1(regenie_step1_l1_in, covariates_file)
 
 
 
@@ -471,9 +459,9 @@ MergePerPhenotype (merge_in.map {it[0]},
 		   merge_in.map {it[2]},
                    merge_in.map {it[3]})
 
-generate_extassoc_in = pheno_file_ch.join(MergePerPhenotype.out)
+generate_extassoc_in = pheno_file_ch.combine(MergePerPhenotype.out, by:0).combine(genotypes_array_tuple, by:0).combine(ancestry_model, by: 0)
 
-Generate_Extassoc_Input (generate_extassoc_in, genotypes_array_tuple, ancestry, model)
+Generate_Extassoc_Input (generate_extassoc_in)
 
 }
 
@@ -481,11 +469,15 @@ workflow {
 
 def suffix_map = [ 'A':'', 'AX':'_female', 'AY':'_male' ]
 
+
 anc_model_pheno_ch = Channel.from(params.ancestries).combine(Channel.from(params.models)).combine(Channel.fromPath(params.phenotypes_files)).map{
       ancestry, model, phenotype_file ->
         def suffix = suffix_map[model]
 
+	def meta = "${ancestry}_${model}_${phenotype_file.baseName}"
+
         tuple (
+	  meta,
           ancestry,
           model,
           files("${params.WORKSPACE_BUCKET_GWAS_MIGRAINE}/arrays/${ancestry}/arrays_${ancestry}${suffix}_qcfiltered.{bed,bim,fam}"),
@@ -493,7 +485,6 @@ anc_model_pheno_ch = Channel.from(params.ancestries).combine(Channel.from(params
         )
     }
 
-anc_model_pheno_ch.view()
 
 RUN_PHENOTYPE(anc_model_pheno_ch)
 }
