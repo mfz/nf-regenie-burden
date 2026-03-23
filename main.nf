@@ -228,9 +228,13 @@ process MergePerPhenotype {
 
   tag "merge_${pheno}"
 
+ publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
+
 
   input:
   val meta
+  val ancestry
+  val model
   val pheno
   path result_files
 
@@ -250,7 +254,6 @@ process MergePerPhenotype {
       zcat "\$f" | grep -v '^#' | tail -n +2
   done | sort -k1,1 -k2,2n >> "${pheno}.regenie"
 
-
   # Compress
   bgzip -f "${pheno}.regenie"
 
@@ -269,7 +272,7 @@ process Generate_Extassoc_Input {
   tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results),  val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam), val(ancestry), val(model)
 
   output:
-  tuple val(pheno), path(regenie_results), path("phenotype.txt")
+  tuple val(pheno), path("phenotype.txt")
 
   
 
@@ -443,21 +446,23 @@ regeniestep1_l0_in = combined_step1_l0_jobs.combine(genotypes_array_tuple ,by:0)
   // step2_out_grouped is
   // val(meta), path(step2_out_bgen_trait*)
 
-    merge_in = pheno_file_ch     // val(meta), path(pheno_file)
+    merge_in = pheno_file_ch.combine(ancestry_model, by:0)     // val(meta), path(pheno_file)
     .join(step2_out_grouped)   // val(meta), path(step2out)
-    .flatMap {meta_, pheno_file_, step2out_ ->
+    .flatMap {meta_, pheno_file_, ancestry_, model_ ,step2out_ ->
         def header = pheno_file_.head(1).readLines().first().split(/\s+/)
         def phenos = header - ['FID','IID']
  
         phenos.collect { pheno ->
             // collect ALL matching files for this phenotype
             def matches = step2out_.findAll { it.name.endsWith("_${pheno}.regenie.gz") }
-            matches ? tuple(meta_, pheno_file_, pheno, matches) : null
+            matches ? tuple(meta_, pheno_file_, ancestry_, model_, pheno, matches) : null
         }.findAll()
     }
 MergePerPhenotype (merge_in.map {it[0]},
 		   merge_in.map {it[2]},
-                   merge_in.map {it[3]})
+		   merge_in.map {it[3]},
+		   merge_in.map {it[4]},
+                   merge_in.map {it[5]})
 
 generate_extassoc_in = pheno_file_ch.combine(MergePerPhenotype.out, by:0).combine(genotypes_array_tuple, by:0).combine(ancestry_model, by: 0)
 
