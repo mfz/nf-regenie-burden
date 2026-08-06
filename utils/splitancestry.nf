@@ -1,11 +1,11 @@
 
-params.baseDir = "${WORKSPACE_BUCKET}"
-params.outDir = "${WORKSPACE_BUCKET}"
-params.genotypes_array = "gs://fc-aou-datasets-controlled/v8/microarray/plink/arrays.{bed,bim,fam}"
+params.baseDir = "gs://workspace-bucket-wb-radiant-cabbage-3726"
+params.outDir = "gs://workspace-bucket-wb-radiant-cabbage-3726"
+params.genotypes_array = "gs://vwb-aou-datasets-controlled/v9/microarray/plink/arrays.{bed,bim,fam}"
 
 // tab-delimited file with columns FID, IID, ancestry
 params.ancestry_file = "${params.baseDir}/ancestry.tsv"
-params.ancestries = ['AFR','AMR', 'EAS']
+params.ancestries = ['EUR', 'AFR','AMR', 'EAS', 'MID']
 params.gender_file = "${params.baseDir}/is_male.tsv"
 
 //SNP_PRUNING process
@@ -27,7 +27,7 @@ params.qc_mind                               = 0.1
 
 process qc_and_filter_array {
 
-    container  "${ARTIFACT_REGISTRY_DOCKER_REPO}/florianzink/nf-gwas-gcloud:v0.2"
+    container  "florianzink/nf-gwas-gcloud:v0.3"
     publishDir "${params.outDir}/arrays/${ancestry}/", mode: 'move'
 
     input:
@@ -108,6 +108,7 @@ process qc_and_filter_array {
 workflow {
 
     genotypes_array_ch = Channel.fromFilePairs(params.genotypes_array, size: 3, checkIfExists: true)
+    genotypes_array_ch.view()
     ancestry_file_ch = Channel.fromPath(params.ancestry_file, checkIfExists: true)
     gender_file_ch = Channel.fromPath(params.gender_file, checkIfExists: true)    
     ancestry_ch = Channel.from(params.ancestries)

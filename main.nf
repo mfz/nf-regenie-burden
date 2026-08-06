@@ -186,27 +186,29 @@ process RegenieStep2_Burden {
 
 process RegenieStep2 {
   
-  tag "regenie_step2_${phenotype_file.baseName}"
+  tag "regenie_step2_${phenotype_file.baseName}_${output_id}"
   publishDir "${params.outdir}/logs", pattern: "*.log", mode: "copy"
 
   input:
-  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_out_files), path(bgen_file)
+  tuple val(meta), path(phenotype_file), path(mac_snplists), path(step1_out_files), val(output_id), val(range), path(bgen_file)
   path covariates_file
   path sample_file
 
   output:
-  tuple val(meta), path("regenie_step2_out_${bgen_file.baseName}_*.gz"), emit: regenie_step2_out
+  tuple val(meta), path("regenie_step2_out_${output_id}_*.gz"), emit: regenie_step2_out
 
   script:
   def bt_flag     = params.phenotypes_binary_trait ? "--bt" : ""
   def firth_flag  = params.regenie_firth ? "--firth --firth-se --pThresh 0.05" : ""
   def approx_flag = params.regenie_firth_approx ? "--approx" : ""
+  def range_flag  = range ? "--range ${range}" : ""
   """
   cat fit_bin_l1_*_pred.list > fit_bin_l1_pred.list
 
   regenie \
     --step 2 \
     --bgen ${bgen_file} \
+    ${range_flag} \
     --ref-first \
     --sample ${sample_file} \
     --phenoFile ${phenotype_file} \
@@ -216,7 +218,7 @@ process RegenieStep2 {
     --pred fit_bin_l1_pred.list \
     --threads ${task.cpus} \
     --gz \
-    --out regenie_step2_out_${bgen_file.baseName}
+    --out regenie_step2_out_${output_id}
   """
 }
 
@@ -401,17 +403,25 @@ regeniestep1_l0_in = combined_step1_l0_jobs.combine(genotypes_array_tuple ,by:0)
           tuple(key, flat)}
   // channel tuple val(meta), path(fit_bin_l1_*)
 
-  bgen_ch = Channel.fromPath(params.genotypes_bgen)
-     .filter {file -> !file.toString().contains("chrY")}
-
   sample_file = file(params.sample_file)
 
-  // scatter over bgens
-  combined_step2_in = pheno_with_snplist           // val(meta), path(pheno_file), path(mac_snplist)        
-      .join(step1_l1_out_grouped)             // val(meta), path(fit_bin_l1_*)
-      .combine(bgen_ch)                       // path(bgen_file)
-
   if (params.burden) {
+
+    // Burden tests always process complete BGENs.  When supplied, manifest
+    // ranges are ignored and its BGEN paths are de-duplicated.
+    bgen_ch = params.bgen_manifest ? Channel
+      .fromPath(params.bgen_manifest, checkIfExists: true)
+      .splitCsv(header: true, sep: '\t')
+      .map { row -> file(row.bgen) }
+      .unique()
+      .filter { bgen_file -> !bgen_file.toString().contains('chrY') }
+      : Channel
+        .fromPath(params.genotypes_bgen)
+        .filter { bgen_file -> !bgen_file.toString().contains('chrY') }
+
+    combined_step2_in = pheno_with_snplist
+      .join(step1_l1_out_grouped)
+      .combine(bgen_ch)
 
    regenie_anno_file    = file(params.regenie_gene_anno, checkIfExists: true)
    regenie_setlist_file = file(params.regenie_gene_setlist, checkIfExists: true)
@@ -428,6 +438,25 @@ regeniestep1_l0_in = combined_step1_l0_jobs.combine(genotypes_array_tuple ,by:0)
     step2_out = RegenieStep2_Burden.out.regenie_step2_out
     // val(meta), path(step2_out_bgen_trait*)
   } else {
+
+    // Standard association can be run either once per BGEN glob match or
+    // once per manifest range.  The common tuple provides a unique output ID,
+    // an optional REGENIE range, and the BGEN file to stage.
+    bgen_ch = params.bgen_manifest ? Channel
+      .fromPath(params.bgen_manifest, checkIfExists: true)
+      .splitCsv(header: true, sep: '\t')
+      .filter { row -> row.chrom != 'chrY' }
+      .map { row ->
+        tuple(row.id, "${row.chrom}:${row.start}-${row.end}", file(row.bgen))
+      }
+      : Channel
+        .fromPath(params.genotypes_bgen)
+        .filter { bgen_file -> !bgen_file.toString().contains('chrY') }
+        .map { bgen_file -> tuple(bgen_file.baseName, '', bgen_file) }
+
+    combined_step2_in = pheno_with_snplist
+      .join(step1_l1_out_grouped)
+      .combine(bgen_ch)
 
     RegenieStep2(combined_step2_in,
                 covariates_file,
@@ -471,6 +500,14 @@ Generate_Extassoc_Input (generate_extassoc_in)
 }
 
 workflow {
+
+if (params.genotypes_bgen && params.bgen_manifest) {
+  error "Specify only one of --genotypes_bgen or --bgen_manifest"
+}
+
+if (!params.genotypes_bgen && !params.bgen_manifest) {
+  error "Specify either --genotypes_bgen or --bgen_manifest"
+}
 
 def suffix_map = [ 'A':'', 'AX':'_female', 'AY':'_male' ]
 
