@@ -27,8 +27,9 @@ params.qc_mind                               = 0.1
 
 process qc_and_filter_array {
 
-    cpus = 4
-    memory = 16.GB
+    cpus 4
+    memory 16.GB
+    machineType 'e2-standard-4'
 
     container  "florianzink/nf-gwas-gcloud:v0.3"
     publishDir "${params.outDir}/arrays/${ancestry}/", mode: 'move'
