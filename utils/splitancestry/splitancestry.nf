@@ -5,7 +5,7 @@ params.genotypes_array = "gs://vwb-aou-datasets-controlled/v9/microarray/plink/a
 
 // tab-delimited file with columns FID, IID, ancestry
 params.ancestry_file = "${params.baseDir}/ancestry.tsv"
-params.ancestries = ['EUR', 'AFR','AMR', 'EAS', 'MID']
+params.ancestries = ['EUR']
 params.gender_file = "${params.baseDir}/is_male.tsv"
 
 //SNP_PRUNING process
@@ -27,9 +27,9 @@ params.qc_mind                               = 0.1
 
 process qc_and_filter_array {
 
-    cpus 4
-    memory 16.GB
-    machineType 'e2-standard-4'
+    cpus 8
+    memory 32.GB
+    machineType 'e2-standard-8'
 
     container  "florianzink/nf-gwas-gcloud:v0.3"
     publishDir "${params.outDir}/arrays/${ancestry}/", mode: 'move'
