@@ -522,7 +522,7 @@ anc_model_pheno_ch = Channel.from(params.ancestries).combine(Channel.from(params
 	  meta,
           ancestry,
           model,
-          files("${params.WORKSPACE_BUCKET_GWAS_MIGRAINE}/arrays/${ancestry}/arrays_${ancestry}${suffix}_qcfiltered.{bed,bim,fam}"),
+          files("gs://workspace-bucket-wb-radiant-cabbage-3726/arrays/${ancestry}/arrays_${ancestry}${suffix}_qcfiltered.{bed,bim,fam}"),
 	  phenotype_file
         )
     }
