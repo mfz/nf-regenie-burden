@@ -2,7 +2,7 @@ library(tidyverse)
 library(bigrquery)
 
 PROJECT <- Sys.getenv("GOOGLE_PROJECT")
-BUCKET <- Sys.getenv("WORKSPACE_BUCKET")
+#BUCKET <- Sys.getenv("WORKSPACE_BUCKET")
 CDR <- Sys.getenv("WORKSPACE_CDR")
 
 bq_query <- function(sql) bq_table_download(bq_dataset_query(Sys.getenv("WORKSPACE_CDR"),
@@ -11,10 +11,9 @@ bq_query <- function(sql) bq_table_download(bq_dataset_query(Sys.getenv("WORKSPA
 					                     bigint = "integer64")
                         
 cb_person <- bq_query("select * from cb_search_person")
+cb_person$person_id = as.integer(cb_person$person_id)
 
-system(str_glue("gsutil -u {PROJECT} cp gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/ancestry/ancestry_preds.tsv ."), intern = T)
-
-ancestry <- read_tsv("ancestry_preds.tsv")
+ancestry <- read_tsv("/home/jupyter/workspace/vwb-aou-datasets-controlled-v9/v9/wgs/short_read/snpindel/aux/ancestry/ancestry_preds.tsv")
 
 pcas <- ancestry |>
   mutate(person_id = as.integer(research_id)) |>
@@ -23,7 +22,7 @@ pcas <- ancestry |>
       
 covariates <- pcas |> 
   inner_join(cb_person, by = 'person_id') |>
-  subset(has_whole_genome_variant == 1 & has_array_data == 1) |>
+  subset(has_ehr_data == 1) |>
   select(-starts_with("has_fitbit")) |>
   subset(sex_at_birth %in% c('Male', 'Female')) |>
   mutate(sex = sex_at_birth,
@@ -35,16 +34,13 @@ covariates <- pcas |>
     
 covariates |>
   select(FID, IID, is_male, age, age2, pc1:pc16) |>
-  write_tsv("covariates.tsv")
+  write_tsv("/home/jupyter/workspace/workspace-bucket/covariates.tsv")
       
 covariates |>
   select(FID, IID, ancestry_pred, ancestry_pred_other) |>
-  write_tsv("ancestry.tsv")
+  write_tsv("/home/jupyter/workspace/workspace-bucket/ancestry.tsv")
         
 covariates |>
   select(FID, IID, is_male) |>
-  write_tsv("is_male.tsv")
+  write_tsv("/home/jupyter/workspace/workspace-bucket/is_male.tsv")
 		
-system(str_glue("gsutil cp covariates.tsv {BUCKET}/covariates.tsv"))
-system(str_glue("gsutil cp ancestry.tsv {BUCKET}/ancestry.tsv"))
-system(str_glue("gsutil cp is_male.tsv {BUCKET}/is_male.tsv"))
