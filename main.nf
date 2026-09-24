@@ -230,7 +230,7 @@ process MergePerPhenotype {
 
   tag "merge_${pheno}"
 
- publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
+ publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V9_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
 
 
   input:
@@ -268,7 +268,7 @@ process Generate_Extassoc_Input {
 
   tag "extassoc_${pheno}"
 
-  publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
+  publishDir "${params.outdir}/A${ancestry[0..1]}_AllOfUs_V9_${params.assoctype}_${ancestry}/${pheno}/${model}", mode: 'move'
 
   input:
   tuple val(meta), path(phenotype_file), val(pheno), path(regenie_results),  val(genotype_array), path(plink_bed), path(plink_bim), path(plink_fam), val(ancestry), val(model)
@@ -279,7 +279,7 @@ process Generate_Extassoc_Input {
   
 
   script:
-  def study_name = "A${ancestry[0..1]}_AllOfUs_V8_${params.assoctype}_${ancestry}"
+  def study_name = "A${ancestry[0..1]}_AllOfUs_V9_${params.assoctype}_${ancestry}"
   """
   join <(sort ${plink_fam}) <(awk -F'\t' -v col="${pheno}" 'NR==1{for(i=1;i<=NF;i++) if(\$i==col) c=i; next} {print \$1,\$c}' OFS='\t' ${phenotype_file} | sort) | awk '{print \$NF}' > ancestry_pheno_joined.tsv
   echo "study_name: ${study_name}" >> phenotype.txt
