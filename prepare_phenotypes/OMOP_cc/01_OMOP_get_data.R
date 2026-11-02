@@ -24,7 +24,7 @@ sql = "SELECT
 
 df = bq_query(sql)
 
-if (!dir.exists("OMOP") dir.create("OMOP")
+if (!dir.exists("OMOP")) dir.create("OMOP")
 fwrite(df, "OMOP/condition_occurrence.tsv", sep = "\t")
 
 # condition_descendants
